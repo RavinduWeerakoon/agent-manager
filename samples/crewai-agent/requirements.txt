@@ -4,3 +4,4 @@ openai
 fastapi
 uvicorn
 python-dotenv
+gunicorn

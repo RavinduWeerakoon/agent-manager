@@ -29,6 +29,8 @@ paths:
                 value:
                   session_id: "session_123"
                   message: "What is the capital of France?"
+      security:
+        - BearerAuth: []
       responses:
         '200':
           description: Successful response from the crew
@@ -52,6 +54,11 @@ paths:
                     type: string
                     example: "An error occurred while processing your request"
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     ChatRequest:
       type: object
@@ -73,3 +80,4 @@ components:
         response:
           type: string
           description: The crew's response to the user's message
+
