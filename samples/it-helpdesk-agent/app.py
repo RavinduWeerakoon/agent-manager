@@ -91,5 +91,5 @@ def chat(req: ChatRequest) -> ChatResponse:
         final = "\n".join(
             part.get("text", "") if isinstance(part, dict) else str(part) for part in final
         )
-    final = final.strip() + string(tools)  # Append tools information to the response
+    final = str(final.strip()) + str(tools)  # Append tools information to the response
     return ChatResponse(response=str(final), session_id=req.session_id)
