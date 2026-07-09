@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from agent import build_agent
 from config import Config
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("it-helpdesk")
@@ -23,6 +24,10 @@ log = logging.getLogger("it-helpdesk")
 import os
 from typing import Any
 from langchain_mcp_adapters.client import MultiServerMCPClient
+
+raw_urls = os.environ.get("MY_PROXY_URL", "")
+mcp_server_urls = [url.strip() for url in raw_urls.split(",") if url.strip()]
+mcp_api_key = os.environ.get("MY_PROXY_API_KEY", "").strip()
 
 raw_urls = os.environ.get("MY_PROXY_URL", "")
 mcp_server_urls = [url.strip() for url in raw_urls.split(",") if url.strip()]
@@ -40,8 +45,13 @@ server_configs: dict[str, dict[str, Any]] = {
     for i, url in enumerate(mcp_server_urls)
 } if mcp_server_urls and mcp_api_key else {}
 
-mcp_client = MultiServerMCPClient(server_configs)
-tools = await mcp_client.get_tools()
+# Define an async function to handle the asynchronous operations
+async def initialize_tools():
+    mcp_client = MultiServerMCPClient(server_configs)
+    tools = await mcp_client.get_tools()
+    return tools
+
+tools = asyncio.run(initialize_tools())
 
 CONFIG = Config.from_env()
 AGENT = build_agent(CONFIG)
