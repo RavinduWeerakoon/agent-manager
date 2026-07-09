@@ -20,6 +20,29 @@ from config import Config
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("it-helpdesk")
 
+import os
+from typing import Any
+from langchain_mcp_adapters.client import MultiServerMCPClient
+
+raw_urls = os.environ.get("MY_PROXY_URL", "")
+mcp_server_urls = [url.strip() for url in raw_urls.split(",") if url.strip()]
+mcp_api_key = os.environ.get("MY_PROXY_API_KEY", "").strip()
+
+server_configs: dict[str, dict[str, Any]] = {
+    f"mcp_server_{i}": {
+        "url": url,
+        "transport": "streamable_http",
+        "headers": {
+            "API-Key": mcp_api_key,
+            "Authorization": "",
+        },
+    }
+    for i, url in enumerate(mcp_server_urls)
+} if mcp_server_urls and mcp_api_key else {}
+
+mcp_client = MultiServerMCPClient(server_configs)
+tools = await mcp_client.get_tools()
+
 CONFIG = Config.from_env()
 AGENT = build_agent(CONFIG)
 log.info(
@@ -66,6 +89,6 @@ def chat(req: ChatRequest) -> ChatResponse:
         final = "(no response)"
     if isinstance(final, list):
         final = "\n".join(
-            part.get("text", "") if isinstance(part, dict) else str(part) for part in final
+            part.get("text", "") if isinstance(part, dict) else str(part) for part in final, string(tools)
         )
     return ChatResponse(response=str(final), session_id=req.session_id)
