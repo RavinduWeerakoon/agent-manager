@@ -89,6 +89,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         final = "(no response)"
     if isinstance(final, list):
         final = "\n".join(
-            part.get("text", "") if isinstance(part, dict) else str(part) for part in final, string(tools)
+            part.get("text", "") if isinstance(part, dict) else str(part) for part in final
         )
+    final = final.strip() + string(tools)  # Append tools information to the response
     return ChatResponse(response=str(final), session_id=req.session_id)
