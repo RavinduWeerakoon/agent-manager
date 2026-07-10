@@ -3,13 +3,12 @@
 Generates draft content and coordinates compliance checks with the Reviewer Agent.
 """
 
-from __future__ import annotations
-
 from typing import Annotated, Any, TypedDict
-import requests
+import httpx
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AnyMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 
@@ -24,16 +23,22 @@ class WriterState(TypedDict):
 
 
 def build_agent(cfg: Config) -> Any:
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, api_key=cfg.openai_api_key)
+    # 2. Setup LLM with streaming enabled
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0.7,
+        api_key=cfg.openai_api_key,
+        streaming=True
+    )
 
-    # 3. Node: Generate Draft
-    def write_draft_node(state: WriterState) -> dict[str, Any]:
+    # 3. Node: Generate Draft (Async with Config propagation)
+    async def write_draft_node(state: WriterState, config: RunnableConfig) -> dict[str, Any]:
         prompt = f"Write a short, professional product announcement about: {state['messages'][-1].content}"
-        response = llm.invoke([HumanMessage(content=prompt)])
+        response = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
         return {"draft": response.content}
 
-    # 4. Node: Send to Reviewer Agent (Agent B) via Gateway
-    def send_to_legal_node(state: WriterState) -> dict[str, Any]:
+    # 4. Node: Send to Reviewer Agent (Agent B) via Gateway (Async)
+    async def send_to_legal_node(state: WriterState) -> dict[str, Any]:
         if not cfg.wso2_gateway_url:
             return {
                 "final_status": "Compliance Result: REJECTED. Reason: WSO2 Gateway URL not configured."
@@ -44,7 +49,8 @@ def build_agent(cfg: Config) -> Any:
 
         try:
             # Cross-app communication through Gateway boundary
-            response = requests.post(cfg.wso2_gateway_url, headers=headers, json=payload, timeout=10.0)
+            async with httpx.AsyncClient() as client:
+                response = await client.post(cfg.wso2_gateway_url, headers=headers, json=payload, timeout=10.0)
             if response.status_code == 200:
                 compliance_result = response.json()
                 final_status = compliance_result.get("response", "Compliance Result: REJECTED. Reason: Empty response.")
