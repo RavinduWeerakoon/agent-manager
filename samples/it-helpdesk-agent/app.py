@@ -1,33 +1,20 @@
-"""FastAPI entrypoint for the IT helpdesk agent.
-
-Implements the AM chat-agent contract: ``POST /chat`` on port 8000 accepting
-``{session_id, message, context}`` and returning ``{response, session_id}``.
-``GET /health`` is provided for local checks (AM does not require it).
-"""
-
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
 from pydantic import BaseModel
 
 from agent import build_agent
 from config import Config
-import asyncio
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("it-helpdesk")
-
-import os
-from typing import Any
-from langchain_mcp_adapters.client import MultiServerMCPClient
-
-raw_urls = os.environ.get("MY_PROXY_URL", "")
-mcp_server_urls = [url.strip() for url in raw_urls.split(",") if url.strip()]
-mcp_api_key = os.environ.get("MY_PROXY_API_KEY", "").strip()
 
 raw_urls = os.environ.get("MY_PROXY_URL", "")
 mcp_server_urls = [url.strip() for url in raw_urls.split(",") if url.strip()]
@@ -47,9 +34,17 @@ server_configs: dict[str, dict[str, Any]] = {
 
 # Define an async function to handle the asynchronous operations
 async def initialize_tools():
-    mcp_client = MultiServerMCPClient(server_configs)
-    tools = await mcp_client.get_tools()
-    return tools
+    if not server_configs:
+        return []
+    try:
+        log.info("Initializing MCP tools from servers...")
+        mcp_client = MultiServerMCPClient(server_configs)
+        tools = await asyncio.wait_for(mcp_client.get_tools(), timeout=5.0)
+        log.info("MCP tools initialized successfully.")
+        return tools
+    except Exception as exc:
+        log.warning("Failed to initialize MCP tools: %s. Falling back to empty tools list.", exc)
+        return []
 
 tools = asyncio.run(initialize_tools())
 
