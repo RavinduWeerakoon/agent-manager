@@ -417,6 +417,11 @@ export const rootRouteMap: AppRoute = {
                                                     index: true,
                                                     children: {},
                                                 },
+                                                guardrails: {
+                                                    path: 'guardrails',
+                                                    index: true,
+                                                    children: {},
+                                                },
                                             },
                                         },
                                     }

@@ -433,6 +433,23 @@ export function useNavigationItems(): Array<
               { orgId, projectId, agentId, envId: defaultEnv },
             ),
           },
+          {
+            label: "Guardrails",
+            type: "item",
+            icon: <ShieldCheck size={20} />,
+            isActive: !!matchPath(
+              absoluteRouteMap.children.org.children.projects.children.agents
+                .children.environment.children.observability.children.guardrails
+                .wildPath,
+              pathname,
+            ),
+            href: generatePath(
+              absoluteRouteMap.children.org.children.projects.children.agents
+                .children.environment.children.observability.children.guardrails
+                .path,
+              { orgId, projectId, agentId, envId: defaultEnv },
+            ),
+          },
         ],
       },
       {
@@ -635,6 +652,23 @@ export function useNavigationItems(): Array<
             href: generatePath(
               absoluteRouteMap.children.org.children.projects.children.agents
                 .children.environment.children.observability.children.metrics
+                .path,
+              { orgId, projectId, agentId, envId: defaultEnv },
+            ),
+          },
+          {
+            label: "Guardrails",
+            type: "item",
+            icon: <ShieldCheck size={20} />,
+            isActive: !!matchPath(
+              absoluteRouteMap.children.org.children.projects.children.agents
+                .children.environment.children.observability.children.guardrails
+                .wildPath,
+              pathname,
+            ),
+            href: generatePath(
+              absoluteRouteMap.children.org.children.projects.children.agents
+                .children.environment.children.observability.children.guardrails
                 .path,
               { orgId, projectId, agentId, envId: defaultEnv },
             ),

@@ -397,6 +397,11 @@ export const generatedRouteMap =  {
                           "path": "/org/:orgId/project/:projectId/agents/:agentId/environment/:envId/observability/metrics",
                           "wildPath": "/org/:orgId/project/:projectId/agents/:agentId/environment/:envId/observability/metrics/*",
                           "children": {}
+                        },
+                        "guardrails": {
+                          "path": "/org/:orgId/project/:projectId/agents/:agentId/environment/:envId/observability/guardrails",
+                          "wildPath": "/org/:orgId/project/:projectId/agents/:agentId/environment/:envId/observability/guardrails/*",
+                          "children": {}
                         }
                       }
                     }

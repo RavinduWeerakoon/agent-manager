@@ -32,5 +32,6 @@ export const metaData: PageMetadata = {
 };
 
 export { MetricsComponent };
+export { GuardrailsComponent } from './Guardrails.Component';
 
 export default MetricsComponent;

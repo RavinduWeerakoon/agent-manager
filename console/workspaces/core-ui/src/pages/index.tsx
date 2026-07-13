@@ -103,6 +103,12 @@ export const LazyMetricsComponent = lazy(() =>
     default: m.metaData.levels!.component as ComponentType,
   }))
 );
+export const LazyGuardrailsComponent = lazy(() =>
+  import("@agent-management-platform/metrics").then((m: any) => ({
+    default: m.GuardrailsComponent as ComponentType,
+  }))
+);
+
 
 // Evaluation
 export const LazyEvalEvaluatorsOrg = lazy(() =>

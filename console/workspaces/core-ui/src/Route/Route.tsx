@@ -58,6 +58,7 @@ import {
   LazyTracesComponent,
   LazyLogsComponent,
   LazyMetricsComponent,
+  LazyGuardrailsComponent,
   LazyEvalEvaluatorsOrg,
   LazyCreateEvaluatorOrg,
   LazyViewEvaluatorOrg,
@@ -572,6 +573,18 @@ export function RootRouter() {
                         .children.metrics.path
                     }
                     element={<LazyMetricsComponent />}
+                  />
+                  <Route
+                    path={
+                      relativeRouteMap.children.org.children.projects.children
+                        .agents.children.environment.children.observability
+                        .path +
+                      "/" +
+                      relativeRouteMap.children.org.children.projects.children
+                        .agents.children.environment.children.observability
+                        .children.guardrails.path
+                    }
+                    element={<LazyGuardrailsComponent />}
                   />
                   <Route
                     path={monitorBase}
