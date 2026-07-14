@@ -12,7 +12,7 @@ function App() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: 'Hello! I am your Writing Assistant. Provide me with a topic, and I will write a product announcement and run it through our legal compliance check.',
+      content: 'Hello! I am your Brand Writing Assistant for ABC Company. You can ask me to help with formatting, typo editing, brainstorming ideas, or drafting public content like announcements and blogs. Public content will automatically be reviewed against our brand compliance guidelines!',
       status: 'idle'
     }
   ]);
@@ -103,6 +103,8 @@ function App() {
 
                 if (statusText === 'APPROVED') {
                   statusVal = 'approved';
+                } else if (statusText === 'BYPASSED' || !statusText) {
+                  statusVal = 'idle';
                 } else {
                   statusVal = 'rejected';
                   finalContent = accumulatedDraft + '\n\n---\n' + statusText;
@@ -229,7 +231,7 @@ function App() {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Type a product announcement topic (e.g. 'A new cloud host...')"
+                placeholder="Ask me anything, or draft an announcement (e.g. 'Draft an announcement for a new cloud host...')"
                 disabled={isGenerating}
               />
               <button type="submit" className="send-btn" disabled={isGenerating || !input.trim()}>

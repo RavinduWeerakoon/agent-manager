@@ -75,7 +75,13 @@ async def chat(req: ChatRequest, request: Request) -> Any:
         try:
             config = {"callbacks": [handler]}
             result = await AGENT.ainvoke(
-                {"messages": [HumanMessage(content=req.message)], "draft": "", "final_status": ""},
+                {
+                    "messages": [HumanMessage(content=req.message)],
+                    "draft": "",
+                    "final_status": "",
+                    "routing_decision": "",
+                    "reviewer_feedback": ""
+                },
                 config=config
             )
             return result
@@ -99,6 +105,8 @@ async def chat(req: ChatRequest, request: Request) -> Any:
                 status_text = result.get('final_status', '')
                 if "APPROVED" in status_text:
                     yield f"data: {json.dumps({'type': 'status', 'content': 'APPROVED'})}\n\n"
+                elif status_text == "BYPASSED":
+                    yield f"data: {json.dumps({'type': 'status', 'content': 'BYPASSED'})}\n\n"
                 else:
                     yield f"data: {json.dumps({'type': 'status', 'content': status_text})}\n\n"
             else:
@@ -111,7 +119,7 @@ async def chat(req: ChatRequest, request: Request) -> Any:
             raise HTTPException(status_code=500, detail="Agent invocation failed")
         
         status_text = result.get('final_status', '')
-        if "APPROVED" in status_text:
+        if "APPROVED" in status_text or status_text == "BYPASSED":
             response_text = result['draft']
         else:
             response_text = f"Draft Created:\n{result['draft']}\n\n{status_text}"

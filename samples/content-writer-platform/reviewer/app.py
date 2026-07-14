@@ -42,7 +42,7 @@ def health() -> dict[str, Any]:
 
 
 @app.post("/chat", response_model=ChatResponse)
-def review_document(
+async def review_document(
     req: ChatRequest,
     authorization: str = Header(None)
 ) -> ChatResponse:
@@ -57,7 +57,7 @@ def review_document(
     }
 
     try:
-        graph_output = AGENT.invoke(initial_state)
+        graph_output = await AGENT.ainvoke(initial_state)
         status = "APPROVED" if graph_output["is_safe"] else "REJECTED"
         reason = graph_output["fail_reason"] if not graph_output["is_safe"] else "Passed all checks."
         response_text = f"Compliance Result: {status}. Reason: {reason}"
