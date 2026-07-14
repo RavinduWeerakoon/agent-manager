@@ -31,7 +31,8 @@ def build_agent(cfg: Config) -> Any:
         model="gpt-4o-mini",
         temperature=0.7,
         api_key=cfg.openai_api_key,
-        streaming=True
+        streaming=True,
+        max_tokens=300
     )
 
     class RoutingDecision(BaseModel):
