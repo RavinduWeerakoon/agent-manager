@@ -164,6 +164,8 @@ Reviewer Note: Corrected the mention of XYZ to traditional alternatives and adju
 """
         
         callback = config.get("configurable", {}).get("token_callback") if config else None
+        if callback:
+            await callback("[CLEAR]")
         draft = ""
         async for chunk in llm.astream([HumanMessage(content=prompt)], config=config):
             draft += chunk.content
