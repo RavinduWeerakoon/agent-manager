@@ -41,12 +41,15 @@ class TokenStreamHandler(AsyncCallbackHandler):
         self.queue = asyncio.Queue()
 
     async def on_llm_new_token(self, token: str, **kwargs) -> None:
+        log.info(f"🔑 [BACKEND DEBUG] Token received: {repr(token)}")
         await self.queue.put(token)
 
     async def on_llm_end(self, *args, **kwargs) -> None:
+        log.info("🔑 [BACKEND DEBUG] LLM generation end.")
         await self.queue.put(None)
 
     async def on_llm_error(self, *args, **kwargs) -> None:
+        log.error("❌ [BACKEND DEBUG] LLM generation error.")
         await self.queue.put(None)
 
 
@@ -74,6 +77,7 @@ async def chat(req: ChatRequest, request: Request) -> Any:
     async def run_agent() -> Any:
         try:
             config = {"callbacks": [handler]}
+            log.info(f"🚀 [BACKEND DEBUG] Running agent with message: {req.message}")
             result = await AGENT.ainvoke(
                 {
                     "messages": [HumanMessage(content=req.message)],
@@ -84,6 +88,7 @@ async def chat(req: ChatRequest, request: Request) -> Any:
                 },
                 config=config
             )
+            log.info(f"🚀 [BACKEND DEBUG] Agent result: {result}")
             return result
         except Exception as exc:
             log.exception("agent invocation failed")

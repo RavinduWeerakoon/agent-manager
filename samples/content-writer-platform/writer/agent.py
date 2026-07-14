@@ -77,8 +77,10 @@ Brand Voice: Professional yet conversational, empathetic, and authoritative.
 Respond directly and concisely to the following request:
 {last_message}"""
         
-        response = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
-        return {"draft": response.content, "final_status": "BYPASSED"}
+        draft = ""
+        async for chunk in llm.astream([HumanMessage(content=prompt)], config=config):
+            draft += chunk.content
+        return {"draft": draft, "final_status": "BYPASSED"}
 
     # 5. Node: Option B - Initial Draft Generation
     async def write_draft_node(state: WriterState, config: RunnableConfig) -> dict[str, Any]:
@@ -92,8 +94,10 @@ Tone Thresholds: Never be overly formal or stuffy. Never use cheap internet slan
 Generate a high-quality initial draft based on the user's request:
 {last_message}"""
         
-        response = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
-        return {"draft": response.content, "final_status": ""}
+        draft = ""
+        async for chunk in llm.astream([HumanMessage(content=prompt)], config=config):
+            draft += chunk.content
+        return {"draft": draft, "final_status": ""}
 
     # 6. Node: Send to Reviewer Agent via Gateway
     async def send_to_legal_node(state: WriterState) -> dict[str, Any]:
@@ -153,8 +157,10 @@ Example format:
 Reviewer Note: Corrected the mention of XYZ to traditional alternatives and adjusted the tone to sound more empathetic.
 """
         
-        response = await llm.ainvoke([HumanMessage(content=prompt)], config=config)
-        return {"draft": response.content, "final_status": "APPROVED"}
+        draft = ""
+        async for chunk in llm.astream([HumanMessage(content=prompt)], config=config):
+            draft += chunk.content
+        return {"draft": draft, "final_status": "APPROVED"}
 
     # 8. Assemble LangGraph State Graph
     workflow = StateGraph(WriterState)
