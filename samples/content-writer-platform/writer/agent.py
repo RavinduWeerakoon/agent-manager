@@ -77,9 +77,12 @@ Brand Voice: Professional yet conversational, empathetic, and authoritative.
 Respond directly and concisely to the following request:
 {last_message}"""
         
+        callback = config.get("configurable", {}).get("token_callback") if config else None
         draft = ""
         async for chunk in llm.astream([HumanMessage(content=prompt)], config=config):
             draft += chunk.content
+            if callback:
+                await callback(chunk.content)
         return {"draft": draft, "final_status": "BYPASSED"}
 
     # 5. Node: Option B - Initial Draft Generation
@@ -94,9 +97,12 @@ Tone Thresholds: Never be overly formal or stuffy. Never use cheap internet slan
 Generate a high-quality initial draft based on the user's request:
 {last_message}"""
         
+        callback = config.get("configurable", {}).get("token_callback") if config else None
         draft = ""
         async for chunk in llm.astream([HumanMessage(content=prompt)], config=config):
             draft += chunk.content
+            if callback:
+                await callback(chunk.content)
         return {"draft": draft, "final_status": ""}
 
     # 6. Node: Send to Reviewer Agent via Gateway
@@ -157,9 +163,12 @@ Example format:
 Reviewer Note: Corrected the mention of XYZ to traditional alternatives and adjusted the tone to sound more empathetic.
 """
         
+        callback = config.get("configurable", {}).get("token_callback") if config else None
         draft = ""
         async for chunk in llm.astream([HumanMessage(content=prompt)], config=config):
             draft += chunk.content
+            if callback:
+                await callback(chunk.content)
         return {"draft": draft, "final_status": "APPROVED"}
 
     # 8. Assemble LangGraph State Graph

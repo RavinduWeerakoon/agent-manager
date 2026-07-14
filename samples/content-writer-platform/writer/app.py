@@ -71,12 +71,22 @@ def health() -> dict[str, Any]:
 
 @app.post("/chat")
 async def chat(req: ChatRequest, request: Request) -> Any:
+    log.info(f"🔑 [BACKEND DEBUG] Request headers: {dict(request.headers)}")
     is_stream = "text/event-stream" in request.headers.get("accept", "")
-    handler = TokenStreamHandler()
+    log.info(f"🔑 [BACKEND DEBUG] is_stream evaluated to: {is_stream}")
+    queue = asyncio.Queue()
+
+    async def token_callback(token: str):
+        log.info(f"🔑 [BACKEND DEBUG] Token received: {repr(token)}")
+        await queue.put(token)
 
     async def run_agent() -> Any:
         try:
-            config = {"callbacks": [handler]}
+            config = {
+                "configurable": {
+                    "token_callback": token_callback
+                }
+            }
             log.info(f"🚀 [BACKEND DEBUG] Running agent with message: {req.message}")
             result = await AGENT.ainvoke(
                 {
@@ -89,23 +99,29 @@ async def chat(req: ChatRequest, request: Request) -> Any:
                 config=config
             )
             log.info(f"🚀 [BACKEND DEBUG] Agent result: {result}")
+            await queue.put(None)
             return result
         except Exception as exc:
             log.exception("agent invocation failed")
-            await handler.queue.put(None)
+            await queue.put(None)
             return None
 
     task = asyncio.create_task(run_agent())
 
     if is_stream:
         async def event_generator():
+            log.info("🔑 [BACKEND DEBUG] event_generator started")
             while True:
-                token = await handler.queue.get()
+                log.info("🔑 [BACKEND DEBUG] event_generator waiting for token...")
+                token = await queue.get()
+                log.info(f"🔑 [BACKEND DEBUG] event_generator got token: {repr(token)}")
                 if token is None:
                     break
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
             
+            log.info("🔑 [BACKEND DEBUG] event_generator loop ended. Waiting for agent task...")
             result = await task
+            log.info(f"🔑 [BACKEND DEBUG] event_generator agent task complete: {result}")
             if result:
                 status_text = result.get('final_status', '')
                 if "APPROVED" in status_text:
@@ -117,7 +133,12 @@ async def chat(req: ChatRequest, request: Request) -> Any:
             else:
                 yield f"data: {json.dumps({'type': 'status', 'content': 'Error: Agent execution failed.'})}\n\n"
 
-        return StreamingResponse(event_generator(), media_type="text/event-stream")
+        headers = {
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+        return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
     else:
         result = await task
         if not result:
