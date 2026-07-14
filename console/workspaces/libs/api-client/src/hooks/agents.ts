@@ -17,7 +17,7 @@
  */
 
 import { useQueryClient } from "@tanstack/react-query";
-import { createAgent, deleteAgent, getAgent, listAgents, generateAgentToken, updateAgent, updateAgentBuildParameters } from "../apis";
+import { createAgent, deleteAgent, getAgent, listAgents, generateAgentToken, updateAgent, updateAgentBuildParameters, getAgentGuardrailMetrics } from "../apis";
 import type {
   AgentListResponse,
   AgentResponse,
@@ -35,6 +35,7 @@ import type {
   GenerateAgentTokenQuery,
   TokenRequest,
   TokenResponse,
+  AgentGuardrailMetricsResponse,
 } from "@agent-management-platform/types";
 import { useAuthHooks } from "@agent-management-platform/auth";
 import { useApiMutation, useApiQuery } from "./react-query-notifications";
@@ -136,3 +137,15 @@ export function useGenerateAgentToken(
     enabled: enabled
   });
 }
+
+export function useGetAgentGuardrailMetrics(
+  params: GetAgentPathParams & { environmentName: string },
+) {
+  const { getToken } = useAuthHooks();
+  return useApiQuery<AgentGuardrailMetricsResponse>({
+    queryKey: ["agent-guardrail-metrics", params.agentName, params.projName, params.orgName, params.environmentName],
+    queryFn: () => getAgentGuardrailMetrics(params, getToken),
+    enabled: !!params.orgName && !!params.projName && !!params.agentName && !!params.environmentName,
+  });
+}
+

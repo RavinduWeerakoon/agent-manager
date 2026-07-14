@@ -35,6 +35,7 @@ import type {
   GenerateAgentTokenQuery,
   TokenRequest,
   TokenResponse,
+  AgentGuardrailMetricsResponse,
 } from "@agent-management-platform/types";
 
 export async function listAgents(
@@ -194,3 +195,28 @@ export async function generateAgentToken(
   if (!res.ok) throw await res.json();
   return res.json();
 }
+
+export async function getAgentGuardrailMetrics(
+  params: GetAgentPathParams & { environmentName: string },
+  getToken?: () => Promise<string>,
+): Promise<AgentGuardrailMetricsResponse> {
+  const { orgName = "default", projName = "default", agentName, environmentName } = params;
+
+  if (!agentName) {
+    throw new Error("agentName is required");
+  }
+
+  const token = getToken ? await getToken() : undefined;
+  const url =
+    `${SERVICE_BASE}/orgs/${encodeURIComponent(orgName)}` +
+    `/projects/${encodeURIComponent(projName)}` +
+    `/agents/${encodeURIComponent(agentName)}/guardrails/metrics`;
+
+  const res = await httpGET(url, {
+    searchParams: { environmentName },
+    token,
+  });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+

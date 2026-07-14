@@ -1631,6 +1631,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /orgs/{orgName}/projects/{projName}/agents/{agentName}/guardrails/metrics:
+    get:
+      summary: Get agent guardrail metrics
+      description: Retrieves safety and moderation guardrail metrics/statistics for an agent in a specific environment
+      operationId: getAgentGuardrailMetrics
+      parameters:
+        - name: agentName
+          in: path
+          description: Unique name of the agent
+          required: true
+          schema:
+            type: string
+        - name: orgName
+          in: path
+          description: Organization name
+          required: true
+          schema:
+            type: string
+        - name: projName
+          in: path
+          description: Project name
+          required: true
+          schema:
+            type: string
+        - name: environmentName
+          in: query
+          description: Name of the environment
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Guardrail metrics for the specified agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentGuardrailMetricsResponse"
+        "400":
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /orgs/{orgName}/projects/{projName}/agents/{agentName}/runtime-logs:
     post:
       summary: Get agent runtime logs with filtering
@@ -17762,3 +17817,59 @@ components:
         clientSecret:
           type: string
           example: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
+
+    AgentGuardrailMetricsResponse:
+      type: object
+      required:
+        - totalEvaluations
+        - totalInterventions
+        - globalPassRate
+        - guardrails
+      properties:
+        totalEvaluations:
+          type: integer
+          example: 8520
+        totalInterventions:
+          type: integer
+          example: 145
+        globalPassRate:
+          type: number
+          example: 98.3
+        guardrails:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuardrailMetricItem"
+
+    GuardrailMetricItem:
+      type: object
+      required:
+        - name
+        - version
+        - direction
+        - evaluations
+        - interventions
+        - failureRate
+        - passRate
+      properties:
+        name:
+          type: string
+          example: content-length-guardrail
+        version:
+          type: string
+          example: v1
+        direction:
+          type: string
+          example: REQUEST
+        evaluations:
+          type: integer
+          example: 1245
+        interventions:
+          type: integer
+          example: 12
+        failureRate:
+          type: number
+          example: 0.96
+        passRate:
+          type: number
+          example: 99.04
+

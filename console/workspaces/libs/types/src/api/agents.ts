@@ -137,5 +137,19 @@ export type GenerateAgentTokenPathParams = AgentPathParams;
 export interface GenerateAgentTokenQuery {
   environment?: string;
 }
+export interface GuardrailMetricItem {
+  name: string;
+  version: string;
+  direction: string;
+  evaluations: number;
+  interventions: number;
+  failureRate: number;
+  passRate: number;
+}
 
-
+export interface AgentGuardrailMetricsResponse {
+  totalEvaluations: number;
+  totalInterventions: number;
+  globalPassRate: number;
+  guardrails: GuardrailMetricItem[];
+}

@@ -51,6 +51,7 @@ type AgentController interface {
 	GetBuildLogs(w http.ResponseWriter, r *http.Request)
 	GenerateName(w http.ResponseWriter, r *http.Request)
 	GetAgentMetrics(w http.ResponseWriter, r *http.Request)
+	GetAgentGuardrailMetrics(w http.ResponseWriter, r *http.Request)
 	GetAgentRuntimeLogs(w http.ResponseWriter, r *http.Request)
 	GetAgentResourceConfigs(w http.ResponseWriter, r *http.Request)
 	UpdateAgentResourceConfigs(w http.ResponseWriter, r *http.Request)
@@ -570,6 +571,31 @@ func (c *agentController) GetAgentMetrics(w http.ResponseWriter, r *http.Request
 	}
 	utils.WriteSuccessResponse(w, http.StatusOK, metricsResponse)
 }
+
+func (c *agentController) GetAgentGuardrailMetrics(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	log := logger.GetLogger(ctx)
+
+	ouID := middleware.OUIDFromRequest(r)
+	projName := r.PathValue(utils.PathParamProjName)
+	agentName := r.PathValue(utils.PathParamAgentName)
+	envName := r.URL.Query().Get("environmentName")
+
+	if envName == "" {
+		log.Error("GetAgentGuardrailMetrics: environmentName query param is required")
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "environmentName is required")
+		return
+	}
+
+	metricsResponse, err := c.agentService.GetAgentGuardrailMetrics(ctx, ouID, projName, agentName, envName)
+	if err != nil {
+		log.Error("GetAgentGuardrailMetrics: failed to get agent guardrail metrics", "error", err)
+		handleCommonErrors(w, err, "Failed to get agent guardrail metrics")
+		return
+	}
+	utils.WriteSuccessResponse(w, http.StatusOK, metricsResponse)
+}
+
 
 func (c *agentController) DeployAgent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
