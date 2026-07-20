@@ -1426,10 +1426,8 @@ func TestResolveResilienceTimeoutSeconds(t *testing.T) {
 	}
 }
 
-// TestBuildCreateTraitRequests_APIAgent_ResilienceTimeout covers the create-time
-// wiring of InputInterface.MaxStreamingDurationSeconds into the api-management
-// trait's resilienceTimeout parameter (services/agent_manager.go's
-// buildCreateTraitRequests, ~line 439 at the time of writing).
+// covers the create-time wiring of InputInterface.MaxStreamingDurationSeconds
+// into the api-management trait's resilienceTimeout parameter
 func TestBuildCreateTraitRequests_APIAgent_ResilienceTimeout(t *testing.T) {
 	tests := []struct {
 		name                        string
@@ -1463,12 +1461,12 @@ func TestBuildCreateTraitRequests_APIAgent_ResilienceTimeout(t *testing.T) {
 	}
 }
 
-// deployAPIAgentMocks builds the minimal set of OpenChoreo client and
+// builds the minimal set of OpenChoreo client and
 // repository mocks needed to drive DeployAgent through to the api-management
 // trait build for an internal API agent, with maxStreamingDurationSeconds
 // controlling the persisted InputInterface value returned by GetComponent.
 // A nil pointer simulates a component whose endpoint workflow parameters
-// never had "maxStreamingDurationSeconds" set (e.g. an agent created before
+// never had "maxStreamingDurationSeconds" set (e .g. an agent created before
 // this field existed, or created without it) — extractInputInterface returns
 // nil for the field in that case, not zero.
 func deployAPIAgentMocks(maxStreamingDurationSeconds *int32) (*agentManagerService, *client.ComponentDeploymentConfigRequest) {

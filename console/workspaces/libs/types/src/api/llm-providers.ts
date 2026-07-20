@@ -287,6 +287,12 @@ export interface CreateLLMProviderRequest {
   rateLimiting?: LLMRateLimitingConfig;
   security?: SecurityConfig;
   gateways?: string[];
+  /**
+   * Max duration (seconds) the egress gateway keeps a streaming (SSE)
+   * response from this provider open before cutting it off. Defaults to
+   * 30 seconds when unset. Bounds: 1-3600 (1 hour).
+   */
+  maxStreamingDurationSeconds?: number;
 }
 
 export interface UpdateLLMProviderRequest {
@@ -303,6 +309,8 @@ export interface UpdateLLMProviderRequest {
   rateLimiting?: LLMRateLimitingConfig;
   security?: SecurityConfig;
   gateways?: string[];
+  /** Updated max duration (seconds) the egress gateway keeps a streaming (SSE) response open. */
+  maxStreamingDurationSeconds?: number;
 }
 
 export interface LLMProviderListItem {
@@ -335,6 +343,8 @@ export interface LLMProviderResponse {
   rateLimiting?: LLMRateLimitingConfig;
   security?: SecurityConfig;
   gateways?: string[];
+  /** Max duration (seconds) the egress gateway keeps a streaming (SSE) response from this provider open before cutting it off. */
+  maxStreamingDurationSeconds?: number;
   inCatalog?: boolean;
   createdAt?: string;
   updatedAt?: string;

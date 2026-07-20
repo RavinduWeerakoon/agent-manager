@@ -74,6 +74,12 @@ export interface InputInterface {
     path: string;
   };
   basePath?: string;
+  /**
+   * Max duration (seconds) the gateway keeps this agent's route open for a
+   * streaming (SSE) response before cutting it off. Defaults to 30 seconds
+   * when unset. Bounds: 1-3600 (1 hour).
+   */
+  maxStreamingDurationSeconds?: number;
 }
 
 export interface AgentType {

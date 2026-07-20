@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildModelConfig, findLowestEnvironmentName } from "./buildAgentPayload";
+import {
+  buildModelConfig,
+  computeMaxStreamingDurationSeconds,
+  findLowestEnvironmentName,
+} from "./buildAgentPayload";
 import type { LLMProviderFormEntry } from "../form/schema";
 
 function entry(over: Partial<LLMProviderFormEntry> = {}): LLMProviderFormEntry {
@@ -70,5 +74,23 @@ describe("findLowestEnvironmentName", () => {
 
   it("returns undefined when no lowest environment can be resolved", () => {
     expect(findLowestEnvironmentName([])).toBeUndefined();
+  });
+});
+
+describe("computeMaxStreamingDurationSeconds", () => {
+  it("returns undefined when duration is unset", () => {
+    expect(computeMaxStreamingDurationSeconds(undefined, "seconds")).toBeUndefined();
+  });
+
+  it("returns the value as-is for the seconds unit", () => {
+    expect(computeMaxStreamingDurationSeconds(60, "seconds")).toBe(60);
+  });
+
+  it("converts minutes to seconds", () => {
+    expect(computeMaxStreamingDurationSeconds(2, "minutes")).toBe(120);
+  });
+
+  it("defaults to seconds when unit is unset", () => {
+    expect(computeMaxStreamingDurationSeconds(45, undefined)).toBe(45);
   });
 });

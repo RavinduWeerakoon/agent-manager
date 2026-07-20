@@ -45,6 +45,19 @@ export function findLowestEnvironmentName(
   )?.sourceEnvironmentRef;
 }
 
+/**
+ * Converts the form's duration+unit pair into whole seconds for the
+ * maxStreamingDurationSeconds field. Returns undefined when duration is unset
+ * (the backend then falls back to its own 30s default).
+ */
+export function computeMaxStreamingDurationSeconds(
+  duration: number | undefined,
+  unit: "seconds" | "minutes" | undefined,
+): number | undefined {
+  if (duration === undefined) return undefined;
+  return unit === "minutes" ? duration * 60 : duration;
+}
+
 export function hasMultipleEnvironments(
   promotionPaths: PromotionPath[] = [],
 ): boolean {
@@ -223,6 +236,15 @@ export const buildAgentCreationPayload = (
               },
             }
             : {}),
+          ...(() => {
+            const maxStreamingDurationSeconds = computeMaxStreamingDurationSeconds(
+              data.streamingDuration,
+              data.streamingDurationUnit,
+            );
+            return maxStreamingDurationSeconds !== undefined
+              ? { maxStreamingDurationSeconds }
+              : {};
+          })(),
         },
         ...(modelConfig ? { modelConfig } : {}),
         ...(mcpConfig ? { mcpConfig } : {}),

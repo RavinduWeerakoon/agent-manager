@@ -120,15 +120,10 @@ type Configurations struct {
 
 // InputInterfaceConfig contains the endpoint configuration for custom-api agents
 type InputInterfaceConfig struct {
-	Type       string
-	Port       int32
-	SchemaPath string
-	BasePath   string
-	// MaxStreamingDurationSeconds is the user-configurable gateway streaming
-	// timeout (nil = unset). It round-trips through the component's own
-	// endpoint workflow parameters exactly like Port/BasePath: buildEndpoints/
-	// buildEndpointsFromInputInterface write it into the "endpoints" array on
-	// create/build-parameter-update, and extractInputInterface reads it back.
+	Type                        string
+	Port                        int32
+	SchemaPath                  string
+	BasePath                    string
 	MaxStreamingDurationSeconds *int32
 }
 

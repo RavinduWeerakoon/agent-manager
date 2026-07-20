@@ -26,14 +26,7 @@ import (
 	"github.com/wso2/agent-manager/agent-manager-service/utils"
 )
 
-// TestBuildEndpointsFromInputInterface_MaxStreamingDurationSeconds covers the
-// UpdateComponentBuildParameters write path (the console's "edit" flow, per
-// the plan's "editable afterward" requirement): buildEndpointsFromInputInterface
-// must add "maxStreamingDurationSeconds" to the rebuilt endpoint map only when
-// the field is non-nil, exactly like buildEndpoints does at create time, so an
-// edit that doesn't touch streaming duration doesn't clobber it with a
-// spurious 0 and an edit that does set it actually persists the new value for
-// the next deploy.
+// covers the UpdateComponentBuildParameters write path
 func TestBuildEndpointsFromInputInterface_MaxStreamingDurationSeconds(t *testing.T) {
 	agentType := AgentTypeConfig{Type: string(utils.AgentTypeAPI), SubType: string(utils.AgentSubTypeCustomAPI)}
 

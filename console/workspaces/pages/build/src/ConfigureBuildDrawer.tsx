@@ -27,6 +27,8 @@ import {
   Divider,
   useTheme,
   Form,
+  MenuItem,
+  Select,
 } from "@wso2/oxygen-ui";
 import { Settings, CheckCircle, Circle } from "@wso2/oxygen-ui-icons-react";
 import {
@@ -69,6 +71,8 @@ interface ConfigureBuildFormValues {
   port?: number;
   basePath?: string;
   openApiPath?: string;
+  streamingDuration?: number;
+  streamingDurationUnit?: "seconds" | "minutes";
 }
 
 const configureBuildSchema = z.object({
@@ -113,6 +117,14 @@ const configureBuildSchema = z.object({
     .optional(),
   basePath: z.string().trim().optional(),
   openApiPath: z.string().trim().optional(),
+  streamingDuration: z
+    .union([z.number(), z.string(), z.undefined()])
+    .transform((val) => {
+      if (val === "" || val === null || val === undefined) return undefined;
+      return typeof val === "string" ? Number(val) : val;
+    })
+    .optional(),
+  streamingDurationUnit: z.enum(["seconds", "minutes"]).default("seconds"),
 }).refine(
   (data) => {
     if (data.interfaceType === "CUSTOM" && !data.port) {
@@ -146,6 +158,13 @@ const configureBuildSchema = z.object({
     return true;
   },
   { message: "OpenAPI spec path is required when using custom interface", path: ["openApiPath"] }
+).refine(
+  (data) => {
+    if (data.streamingDuration === undefined) return true;
+    const seconds = data.streamingDurationUnit === "minutes" ? data.streamingDuration * 60 : data.streamingDuration;
+    return Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600;
+  },
+  { message: "Max streaming duration must be between 1 second and 1 hour", path: ["streamingDuration"] }
 ).refine(
   (data) => {
     if (data.language === 'python' && !data.runCommand?.trim()) {
@@ -245,6 +264,8 @@ export function ConfigureBuildDrawer({
       port: inputInterface?.port,
       basePath: inputInterface?.basePath ?? "",
       openApiPath: inputInterface?.schema?.path ?? "",
+      streamingDuration: inputInterface?.maxStreamingDurationSeconds,
+      streamingDurationUnit: "seconds" as const,
     }),
     [
       repo?.url,
@@ -259,6 +280,7 @@ export function ConfigureBuildDrawer({
       inputInterface?.port,
       inputInterface?.basePath,
       inputInterface?.schema?.path,
+      inputInterface?.maxStreamingDurationSeconds,
       resolvedInterfaceType,
     ],
   );
@@ -397,6 +419,14 @@ export function ConfigureBuildDrawer({
               schema: {
                 path: formData.openApiPath || "",
               },
+            }
+          : {}),
+        ...(formData.streamingDuration !== undefined
+          ? {
+              maxStreamingDurationSeconds:
+                formData.streamingDurationUnit === "minutes"
+                  ? formData.streamingDuration * 60
+                  : formData.streamingDuration,
             }
           : {}),
       },
@@ -707,6 +737,41 @@ export function ConfigureBuildDrawer({
                       </Box>
                     </Box>
                   </Collapse>
+                  <Box display="flex" flexDirection="row" gap={1}>
+                    <Box flexGrow={1}>
+                      <TextInput
+                        label="Max Streaming Duration"
+                        placeholder="30"
+                        value={formData.streamingDuration ?? ""}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          if (/^\d*$/.test(next)) {
+                            handleFieldChange('streamingDuration', next === "" ? undefined : Number(next));
+                          }
+                        }}
+                        fullWidth
+                        size="small"
+                        type="number"
+                        error={!!errors.streamingDuration}
+                        helperText={
+                          errors.streamingDuration ||
+                          "Max time (default 30s) the gateway keeps a streaming (SSE) response open"
+                        }
+                        disabled={isPending}
+                      />
+                    </Box>
+                    <Box>
+                      <Select
+                        value={formData.streamingDurationUnit ?? "seconds"}
+                        onChange={(e) => handleFieldChange('streamingDurationUnit', e.target.value as "seconds" | "minutes")}
+                        size="small"
+                        disabled={isPending}
+                      >
+                        <MenuItem value="seconds">Seconds</MenuItem>
+                        <MenuItem value="minutes">Minutes</MenuItem>
+                      </Select>
+                    </Box>
+                  </Box>
                 </Box>
               </CardContent>
             </Card>

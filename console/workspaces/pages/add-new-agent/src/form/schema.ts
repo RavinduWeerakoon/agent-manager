@@ -116,6 +116,14 @@ export const createAgentSchema = z.object({
     .optional(),
   basePath: z.string().trim().optional(),
   openApiPath: z.string().trim().optional(),
+  streamingDuration: z
+    .union([z.number(), z.string(), z.undefined()])
+    .transform((val) => {
+      if (val === '' || val === null || val === undefined) return undefined;
+      return typeof val === 'string' ? Number(val) : val;
+    })
+    .optional(),
+  streamingDurationUnit: z.enum(['seconds', 'minutes']).optional(),
   env: z
     .array(
       z.object({
@@ -193,6 +201,13 @@ export const createAgentSchema = z.object({
     return true;
   },
   { message: 'OpenAPI spec path is required when using custom interface', path: ['openApiPath'] }
+).refine(
+  (data) => {
+    if (data.streamingDuration === undefined) return true;
+    const seconds = data.streamingDurationUnit === 'minutes' ? data.streamingDuration * 60 : data.streamingDuration;
+    return Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600;
+  },
+  { message: 'Max streaming duration must be between 1 second and 1 hour', path: ['streamingDuration'] }
 ).refine(
   (data) => {
     // Validate Python-specific fields: runCommand is required for Python

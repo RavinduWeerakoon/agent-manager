@@ -33,12 +33,6 @@ func int32Ptr(v int32) *int32 {
 	return &v
 }
 
-// TestBuildEndpoints_MaxStreamingDurationSeconds covers the write side of the
-// MaxStreamingDurationSeconds round-trip: buildEndpoints must add the
-// "maxStreamingDurationSeconds" key to the endpoint map only when the field is
-// non-nil, mirroring how schemaFilePath/schemaType are conditionally handled,
-// so old/default agents don't get a spurious 0 written into their workflow
-// parameters.
 func TestBuildEndpoints_MaxStreamingDurationSeconds(t *testing.T) {
 	t.Run("set value is included in the endpoint map", func(t *testing.T) {
 		req := CreateComponentRequest{
@@ -79,12 +73,6 @@ func TestBuildEndpoints_MaxStreamingDurationSeconds(t *testing.T) {
 	})
 }
 
-// TestExtractInputInterface_MaxStreamingDurationSeconds covers the read side:
-// extractInputInterface must parse "maxStreamingDurationSeconds" back out of
-// the endpoints array parsed from the component's workflow parameters (JSON
-// numbers decode as float64 in a map[string]interface{}, matching how
-// "port" is already handled), and must leave the field nil when the key is
-// absent (e.g. agents created before this fix, or without the field set).
 func TestExtractInputInterface_MaxStreamingDurationSeconds(t *testing.T) {
 	t.Run("present key is parsed into a non-nil pointer", func(t *testing.T) {
 		params := map[string]interface{}{
@@ -125,18 +113,13 @@ func TestExtractInputInterface_MaxStreamingDurationSeconds(t *testing.T) {
 	})
 }
 
-// TestConvertComponentFromTyped_MaxStreamingDurationSeconds exercises the full
-// read-side round-trip from a gen.Component (as returned by GetComponent) down
-// to models.AgentResponse.InputInterface.MaxStreamingDurationSeconds, covering
+// covers
 // both branches of the field-by-field merge in convertComponentFromTyped:
 //   - when comp.Spec.Parameters has no "basePath", agent.InputInterface starts
 //     nil and is assigned wholesale from extractInputInterface's result.
 //   - when comp.Spec.Parameters DOES have a top-level "basePath" (as some
 //     agents do), agent.InputInterface is pre-populated before the workflow
-//     parameters are merged in field-by-field; MaxStreamingDurationSeconds
-//     must be included in that merge exactly like Port/Type/Schema/BasePath/
-//     Visibility already are, or a redeploy of such an agent would silently
-//     drop a persisted value even though extractInputInterface computed it.
+//     parameters are merged in field-by-field
 func TestConvertComponentFromTyped_MaxStreamingDurationSeconds(t *testing.T) {
 	newComponent := func(specParameters *map[string]interface{}) *gen.Component {
 		workflowParams := map[string]interface{}{

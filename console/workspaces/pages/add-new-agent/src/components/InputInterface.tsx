@@ -25,6 +25,8 @@ import {
   Typography,
   Form,
   TextField,
+  MenuItem,
+  Select,
 } from "@wso2/oxygen-ui";
 import { useCallback } from "react";
 import type { CreateAgentFormValues } from "../form/schema";
@@ -144,6 +146,16 @@ export const InputInterface = ({
     [handleFieldChange]
   );
 
+  const handleStreamingDurationChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const next = e.target.value;
+      if (/^\d*$/.test(next)) {
+        handleFieldChange('streamingDuration', next === "" ? undefined : Number(next));
+      }
+    },
+    [handleFieldChange]
+  );
+
   return (
     <Form.Section>
       <Form.Subheader>Agent Type</Form.Subheader>
@@ -257,6 +269,37 @@ export const InputInterface = ({
             </Form.ElementWrapper>
           </Form.Stack>
         </Collapse>
+        <Form.Stack direction="row" spacing={2}>
+          <Box display="flex" flexDirection="column" flexGrow={1}>
+            <Form.ElementWrapper label="Max Streaming Duration" name="streamingDuration">
+              <TextField
+                id="streamingDuration"
+                placeholder="30"
+                value={formData.streamingDuration ?? ''}
+                onChange={handleStreamingDurationChange}
+                type="number"
+                error={!!errors.streamingDuration}
+                helperText={
+                  errors.streamingDuration ||
+                  "Max time (default 30s) the gateway keeps a streaming (SSE) response open"
+                }
+                fullWidth
+              />
+            </Form.ElementWrapper>
+          </Box>
+          <Box>
+            <Form.ElementWrapper label="Unit" name="streamingDurationUnit">
+              <Select
+                id="streamingDurationUnit"
+                value={formData.streamingDurationUnit ?? "seconds"}
+                onChange={(e) => handleFieldChange('streamingDurationUnit', e.target.value)}
+              >
+                <MenuItem value="seconds">Seconds</MenuItem>
+                <MenuItem value="minutes">Minutes</MenuItem>
+              </Select>
+            </Form.ElementWrapper>
+          </Box>
+        </Form.Stack>
       </Form.Stack>
     </Form.Section>
   );

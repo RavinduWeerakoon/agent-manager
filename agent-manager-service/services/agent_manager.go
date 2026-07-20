@@ -327,14 +327,7 @@ func mapInputInterface(specInterface *spec.InputInterface) *client.InputInterfac
 	return config
 }
 
-// resolveResilienceTimeoutSeconds is the single resolution site for the
-// user-configurable streaming duration (InputInterface.MaxStreamingDurationSeconds),
-// shared by both the create-time and deploy-time api-configuration trait builders.
-// requested is nil when the field is unset. Any value outside
-// [client.MinResilienceTimeoutSeconds, client.MaxResilienceTimeoutSeconds] is treated
-// as if it were unset and falls back to client.DefaultResilienceTimeoutSeconds — this
-// guard is enforced here (not only via console-side Zod validation) because the public
-// API can be called directly.
+// resolution site for the user-configurable streaming duration
 func resolveResilienceTimeoutSeconds(requested *int32) int32 {
 	if requested != nil && *requested >= client.MinResilienceTimeoutSeconds && *requested <= client.MaxResilienceTimeoutSeconds {
 		return *requested

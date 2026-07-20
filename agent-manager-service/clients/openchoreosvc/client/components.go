@@ -2313,35 +2313,19 @@ func WithArtifactID(artifactID string) TraitOption {
 }
 
 // Bounds and default for the user-configurable streaming duration
-// (InputInterface.MaxStreamingDurationSeconds), which becomes the
-// api-configuration trait's resilienceTimeout parameter. These are the single
-// source of truth for the 1-3600 bound and the 30s default on the Go side;
-// callers (e.g. services/agent_manager.go) must reference these constants
-// rather than repeating the literals.
 const (
-	// DefaultResilienceTimeoutSeconds preserves today's effective hardcoded
-	// gateway route timeout when no streaming duration is configured.
+	//when no streaming duration is configured.
 	DefaultResilienceTimeoutSeconds int32 = 30
-	// MinResilienceTimeoutSeconds is the minimum allowed streaming duration, in seconds.
-	MinResilienceTimeoutSeconds int32 = 1
-	// MaxResilienceTimeoutSeconds is the maximum allowed streaming duration (1 hour), in seconds.
-	MaxResilienceTimeoutSeconds int32 = 3600
+	MinResilienceTimeoutSeconds     int32 = 1
+	MaxResilienceTimeoutSeconds     int32 = 3600
 )
 
-// FormatResilienceTimeout converts a whole-second duration into the gateway's
-// duration string format (e.g. 30 -> "30s"). This is the single shared
-// helper for that conversion — exported so other packages (e.g. the LLM
-// Provider egress path in services/llm_deployment_service.go) reuse it
-// instead of reimplementing the format at their own call site.
+// converts second duration into the gateway's duration string format (e.g. 30 -> "30s").
 func FormatResilienceTimeout(seconds int32) string {
 	return fmt.Sprintf("%ds", seconds)
 }
 
-// WithResilienceTimeout sets the resilience (streaming) timeout for the
-// api-configuration trait. seconds is expected to already be resolved and
-// bounds-checked by the caller (see MinResilienceTimeoutSeconds /
-// MaxResilienceTimeoutSeconds); it is formatted as a gateway duration string
-// (e.g. "30s") via FormatResilienceTimeout.
+// transforming to gateway policy format
 func WithResilienceTimeout(seconds int32) TraitOption {
 	return func(params map[string]interface{}) {
 		params["resilienceTimeout"] = FormatResilienceTimeout(seconds)

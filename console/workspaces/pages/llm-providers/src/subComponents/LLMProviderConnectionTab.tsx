@@ -41,6 +41,7 @@ import {
 import { Eye, EyeOff } from "@wso2/oxygen-ui-icons-react";
 
 const MASKED_CREDENTIAL_VALUE = "••••••••••••";
+const DEFAULT_MAX_STREAMING_DURATION_SECONDS = 30;
 
 const providerEndpointSchema = z
   .string()
@@ -81,6 +82,12 @@ export function LLMProviderConnectionTab({
   const [credentialValue, setCredentialValue] = useState("");
   const [isCredentialMasked, setIsCredentialMasked] = useState(false);
   const [showCredential, setShowCredential] = useState(false);
+  const [streamingDuration, setStreamingDuration] = useState(
+    DEFAULT_MAX_STREAMING_DURATION_SECONDS,
+  );
+  const [streamingDurationUnit, setStreamingDurationUnit] = useState<
+    "seconds" | "minutes"
+  >("seconds");
   const [status, setStatus] = useState<{
     message: string;
     severity: "success" | "error";
@@ -100,6 +107,10 @@ export function LLMProviderConnectionTab({
     setCredentialValue(MASKED_CREDENTIAL_VALUE);
     setIsCredentialMasked(true);
     setEndpointError(null);
+    setStreamingDuration(
+      providerData.maxStreamingDurationSeconds ?? DEFAULT_MAX_STREAMING_DURATION_SECONDS,
+    );
+    setStreamingDurationUnit("seconds");
   }, [providerData]);
 
   const isDirty = useMemo(() => {
@@ -119,6 +130,13 @@ export function LLMProviderConnectionTab({
     ) {
       return true;
     }
+
+    const savedStreamingDurationSeconds =
+      providerData.maxStreamingDurationSeconds ?? DEFAULT_MAX_STREAMING_DURATION_SECONDS;
+    const currentStreamingDurationSeconds =
+      streamingDurationUnit === "minutes" ? streamingDuration * 60 : streamingDuration;
+    if (currentStreamingDurationSeconds !== savedStreamingDurationSeconds) return true;
+
     return false;
   }, [
     providerData,
@@ -127,6 +145,8 @@ export function LLMProviderConnectionTab({
     authenticationHeader,
     credentialValue,
     isCredentialMasked,
+    streamingDuration,
+    streamingDurationUnit,
   ]);
 
   const validateEndpoint = useCallback((value: string): string | null => {
@@ -150,6 +170,10 @@ export function LLMProviderConnectionTab({
     setCredentialValue(MASKED_CREDENTIAL_VALUE);
     setIsCredentialMasked(true);
     setEndpointError(null);
+    setStreamingDuration(
+      providerData.maxStreamingDurationSeconds ?? DEFAULT_MAX_STREAMING_DURATION_SECONDS,
+    );
+    setStreamingDurationUnit("seconds");
     setStatus(null);
   }, [providerData]);
 
@@ -192,6 +216,9 @@ export function LLMProviderConnectionTab({
             value: authValue,
           };
 
+    const maxStreamingDurationSeconds =
+      streamingDurationUnit === "minutes" ? streamingDuration * 60 : streamingDuration;
+
     try {
       await onUpdate({
         upstream: {
@@ -200,6 +227,7 @@ export function LLMProviderConnectionTab({
             auth: authPayload,
           },
         },
+        maxStreamingDurationSeconds,
       });
       setStatus({
         message: "Connection updated successfully.",
@@ -223,6 +251,8 @@ export function LLMProviderConnectionTab({
     credentialValue,
     valuePrefix,
     isCredentialMasked,
+    streamingDuration,
+    streamingDurationUnit,
     onUpdate,
     validateEndpoint,
   ]);
@@ -347,6 +377,36 @@ export function LLMProviderConnectionTab({
                   },
                 }}
               />
+            </FormControl>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth>
+              <FormLabel>Max Streaming Duration</FormLabel>
+              <TextField
+                size="small"
+                type="number"
+                value={streamingDuration}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (/^\d*$/.test(next)) {
+                    setStreamingDuration(next === "" ? 0 : Number(next));
+                  }
+                }}
+                helperText="Max time (default 30s) the egress gateway keeps a streaming (SSE) response open"
+              />
+            </FormControl>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth>
+              <FormLabel>Unit</FormLabel>
+              <Select
+                size="small"
+                value={streamingDurationUnit}
+                onChange={(e) => setStreamingDurationUnit(e.target.value as "seconds" | "minutes")}
+              >
+                <MenuItem value="seconds">Seconds</MenuItem>
+                <MenuItem value="minutes">Minutes</MenuItem>
+              </Select>
             </FormControl>
           </Grid>
           <Grid size={{ xs: 12 }}>
