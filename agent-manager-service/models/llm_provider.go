@@ -55,6 +55,10 @@ type LLMProviderConfig struct {
 	RateLimiting  *LLMRateLimitingConfig `json:"rateLimiting,omitempty"`
 	Policies      []LLMPolicy            `json:"policies,omitempty"`
 	Security      *SecurityConfig        `json:"security,omitempty"`
+	// MaxStreamingDurationSeconds caps how long the egress gateway keeps a
+	// streaming (SSE) response from this provider open before cutting it off.
+	// Nil means "use the platform default" (client.DefaultResilienceTimeoutSeconds).
+	MaxStreamingDurationSeconds *int32 `json:"maxStreamingDurationSeconds,omitempty"`
 }
 
 // LLMModelProvider represents a model provider

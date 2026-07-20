@@ -300,6 +300,11 @@ spec:
             backendRefs:
             - name: ${metadata.componentName}
               port: ${workload.endpoints[endpoint].port}
+            # This base timeout is always overwritten by the api-configuration trait's
+            # HTTPRoute patch (see api-management-trait.yaml), which is attached to every
+            # API agent at create time and sets this to 0s, delegating real enforcement to
+            # the RestApi's own spec.resilience.timeout. Kept here only as the pre-patch
+            # fallback for a route rendered before any trait is attached.
             timeouts:
               request: 30s
 

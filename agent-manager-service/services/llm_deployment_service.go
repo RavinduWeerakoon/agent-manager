@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 
+	"github.com/wso2/agent-manager/agent-manager-service/clients/openchoreosvc/client"
 	"github.com/wso2/agent-manager/agent-manager-service/models"
 	"github.com/wso2/agent-manager/agent-manager-service/repositories"
 	"github.com/wso2/agent-manager/agent-manager-service/utils"
@@ -95,6 +96,16 @@ type LLMProviderDeploymentSpec struct {
 	RateLimiting  *models.LLMRateLimitingConfig `yaml:"rateLimiting,omitempty" json:"rateLimiting,omitempty"`
 	Policies      []models.LLMPolicy            `yaml:"policies,omitempty" json:"policies,omitempty"`
 	Security      *models.SecurityConfig        `yaml:"security,omitempty" json:"security,omitempty"`
+	Resilience    *Resilience                   `yaml:"resilience,omitempty" json:"resilience,omitempty"`
+}
+
+// Resilience mirrors the gateway's resilience block: Timeout is the hard cap
+// on the whole request/stream, IdleTimeout the max gap between chunks. Both
+// are gateway duration strings (e.g. "30s"). IdleTimeout is always "0s" here —
+// it is not user-configurable for LLM Provider egress traffic.
+type Resilience struct {
+	Timeout     string `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	IdleTimeout string `yaml:"idleTimeout,omitempty" json:"idleTimeout,omitempty"`
 }
 
 // GatewayUpstream represents the flat upstream structure expected by the gateway
@@ -959,6 +970,10 @@ func (s *LLMProviderDeploymentService) generateLLMProviderDeploymentYAML(provide
 			Upstream:      gatewayUpstream,
 			AccessControl: accessControl,
 			Policies:      policies,
+			Resilience: &Resilience{
+				Timeout:     client.FormatResilienceTimeout(resolveResilienceTimeoutSeconds(provider.Configuration.MaxStreamingDurationSeconds)),
+				IdleTimeout: "0s",
+			},
 		},
 	}
 

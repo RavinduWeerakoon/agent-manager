@@ -9,6 +9,13 @@
 # apiGateway.namespace: a same-namespace parentRef needs no allowedRoutes
 # changes on a Gateway this chart does not own. The backendRef crosses into
 # apiGateway.namespace, which the ReferenceGrant below permits.
+#
+# This outer hop's own request timeout is disabled (0s): real enforcement for
+# LLM/egress traffic now lives in each LlmProvider/LlmProxy's own
+# spec.resilience.timeout (see llm_deployment_service.go), which the WSO2 API
+# Platform Gateway enforces at the actual upstream hop. A hardcoded timeout here
+# would silently cut off SSE/streaming LLM responses before that configured
+# resilience.timeout ever gets a chance to apply.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -29,7 +36,7 @@ spec:
           namespace: {{ .Values.apiGateway.namespace }}
           port: 22893
       timeouts:
-        request: 30s
+        request: 0s
 {{- if ne .Values.apiGateway.namespace .Values.kgateway.namespace }}
 ---
 # ReferenceGrant: Gateway API blocks cross-namespace backendRefs unless the

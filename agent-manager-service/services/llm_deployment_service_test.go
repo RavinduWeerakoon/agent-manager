@@ -309,6 +309,62 @@ func TestGenerateLLMProviderDeploymentYAML_BasicProvider(t *testing.T) {
 	if len(out.Spec.Policies) != 0 {
 		t.Fatalf("expected 0 policies, got: %d", len(out.Spec.Policies))
 	}
+
+	// Verify resilience defaults to 30s/0s when MaxStreamingDurationSeconds is unset
+	if out.Spec.Resilience == nil {
+		t.Fatalf("expected resilience to be set")
+	}
+	if out.Spec.Resilience.Timeout != "30s" {
+		t.Fatalf("expected default resilience timeout 30s, got: %s", out.Spec.Resilience.Timeout)
+	}
+	if out.Spec.Resilience.IdleTimeout != "0s" {
+		t.Fatalf("expected resilience idleTimeout 0s, got: %s", out.Spec.Resilience.IdleTimeout)
+	}
+}
+
+// TestGenerateLLMProviderDeploymentYAML_ResilienceTimeout tests that a configured
+// MaxStreamingDurationSeconds is reflected in the deployment YAML's resilience block,
+// and that idleTimeout always stays "0s" (not user-configurable).
+func TestGenerateLLMProviderDeploymentYAML_ResilienceTimeout(t *testing.T) {
+	service := &LLMProviderDeploymentService{}
+
+	provider := &models.LLMProvider{
+		TemplateHandle: "openai",
+		Artifact: &models.Artifact{
+			Handle: "openai-provider",
+		},
+		Configuration: models.LLMProviderConfig{
+			Name:    "OpenAI Provider",
+			Version: "v1.0",
+			Context: strPtr("/"),
+			Upstream: &models.UpstreamConfig{
+				Main: &models.UpstreamEndpoint{
+					URL: "https://api.openai.com",
+				},
+			},
+			MaxStreamingDurationSeconds: int32Ptr(120),
+		},
+	}
+
+	yamlStr, err := service.generateLLMProviderDeploymentYAML(provider, "test-org")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	var out LLMProviderDeploymentYAML
+	if err := yaml.Unmarshal([]byte(yamlStr), &out); err != nil {
+		t.Fatalf("failed to unmarshal generated yaml: %v", err)
+	}
+
+	if out.Spec.Resilience == nil {
+		t.Fatalf("expected resilience to be set")
+	}
+	if out.Spec.Resilience.Timeout != "120s" {
+		t.Fatalf("expected resilience timeout 120s, got: %s", out.Spec.Resilience.Timeout)
+	}
+	if out.Spec.Resilience.IdleTimeout != "0s" {
+		t.Fatalf("expected resilience idleTimeout 0s (not user-configurable), got: %s", out.Spec.Resilience.IdleTimeout)
+	}
 }
 
 // TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKey tests security transformation

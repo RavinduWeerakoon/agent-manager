@@ -243,17 +243,18 @@ func ConvertModelToSpecLLMProviderResponse(model *models.LLMProvider) spec.LLMPr
 	}
 
 	resp := &spec.LLMProviderResponse{
-		Uuid:        model.UUID.String(),
-		Id:          model.Artifact.Handle,
-		Name:        model.Artifact.Name,
-		Description: stringToPtr(model.Description),
-		CreatedBy:   stringToPtr(model.CreatedBy),
-		Version:     model.Artifact.Version,
-		Context:     ptrToString(model.Configuration.Context),
-		Template:    model.TemplateHandle,
-		Upstream:    upstream,
-		Openapi:     stringToPtr(model.OpenAPISpec),
-		Status:      model.Status,
+		Uuid:                        model.UUID.String(),
+		Id:                          model.Artifact.Handle,
+		Name:                        model.Artifact.Name,
+		Description:                 stringToPtr(model.Description),
+		CreatedBy:                   stringToPtr(model.CreatedBy),
+		Version:                     model.Artifact.Version,
+		Context:                     ptrToString(model.Configuration.Context),
+		Template:                    model.TemplateHandle,
+		Upstream:                    upstream,
+		Openapi:                     stringToPtr(model.OpenAPISpec),
+		Status:                      model.Status,
+		MaxStreamingDurationSeconds: model.Configuration.MaxStreamingDurationSeconds,
 	}
 
 	// Convert optional fields from configuration
@@ -295,13 +296,14 @@ func ConvertSpecToModelLLMProviderConfigFromRequest(req *spec.CreateLLMProviderR
 	upstream := ConvertSpecToModelUpstreamConfig(req.Upstream)
 
 	modelConfig := models.LLMProviderConfig{
-		Name:     req.Name,
-		Handle:   req.Id,
-		Version:  req.Version,
-		Context:  &req.Context,
-		VHost:    nil,
-		Template: req.Template,
-		Upstream: &upstream,
+		Name:                        req.Name,
+		Handle:                      req.Id,
+		Version:                     req.Version,
+		Context:                     &req.Context,
+		VHost:                       nil,
+		Template:                    req.Template,
+		Upstream:                    &upstream,
+		MaxStreamingDurationSeconds: req.MaxStreamingDurationSeconds,
 	}
 
 	if req.AccessControl != nil {

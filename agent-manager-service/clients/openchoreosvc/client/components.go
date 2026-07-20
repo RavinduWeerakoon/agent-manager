@@ -2328,10 +2328,12 @@ const (
 	MaxResilienceTimeoutSeconds int32 = 3600
 )
 
-// formatResilienceTimeout converts a whole-second duration into the gateway's
+// FormatResilienceTimeout converts a whole-second duration into the gateway's
 // duration string format (e.g. 30 -> "30s"). This is the single shared
-// helper for that conversion; do not reimplement it at other call sites.
-func formatResilienceTimeout(seconds int32) string {
+// helper for that conversion — exported so other packages (e.g. the LLM
+// Provider egress path in services/llm_deployment_service.go) reuse it
+// instead of reimplementing the format at their own call site.
+func FormatResilienceTimeout(seconds int32) string {
 	return fmt.Sprintf("%ds", seconds)
 }
 
@@ -2339,10 +2341,10 @@ func formatResilienceTimeout(seconds int32) string {
 // api-configuration trait. seconds is expected to already be resolved and
 // bounds-checked by the caller (see MinResilienceTimeoutSeconds /
 // MaxResilienceTimeoutSeconds); it is formatted as a gateway duration string
-// (e.g. "30s") via formatResilienceTimeout.
+// (e.g. "30s") via FormatResilienceTimeout.
 func WithResilienceTimeout(seconds int32) TraitOption {
 	return func(params map[string]interface{}) {
-		params["resilienceTimeout"] = formatResilienceTimeout(seconds)
+		params["resilienceTimeout"] = FormatResilienceTimeout(seconds)
 	}
 }
 
@@ -2474,7 +2476,7 @@ func (c *openChoreoClient) buildAPIConfigurationTraitParameters(componentName st
 		"context":           fmt.Sprintf("/%s", componentName),
 		"upstreamPort":      config.GetConfig().DefaultChatAPI.DefaultHTTPPort,
 		"upstreamBasePath":  config.GetConfig().DefaultChatAPI.DefaultBasePath,
-		"resilienceTimeout": formatResilienceTimeout(DefaultResilienceTimeoutSeconds),
+		"resilienceTimeout": FormatResilienceTimeout(DefaultResilienceTimeoutSeconds),
 	}
 	for _, opt := range opts {
 		opt(params)

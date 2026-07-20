@@ -42,6 +42,8 @@ type CreateLLMProviderRequest struct {
 	RateLimiting   *LLMRateLimitingConfig `json:"rateLimiting,omitempty"`
 	Security       *SecurityConfig        `json:"security,omitempty"`
 	Gateways       []string               `json:"gateways,omitempty"`
+	// Max duration (seconds) the egress gateway keeps a streaming (SSE) response to this provider open before cutting it off. Defaults to 30 seconds when unset.
+	MaxStreamingDurationSeconds *int32 `json:"maxStreamingDurationSeconds,omitempty"`
 }
 
 // NewCreateLLMProviderRequest instantiates a new CreateLLMProviderRequest object
@@ -469,6 +471,38 @@ func (o *CreateLLMProviderRequest) SetGateways(v []string) {
 	o.Gateways = v
 }
 
+// GetMaxStreamingDurationSeconds returns the MaxStreamingDurationSeconds field value if set, zero value otherwise.
+func (o *CreateLLMProviderRequest) GetMaxStreamingDurationSeconds() int32 {
+	if o == nil || IsNil(o.MaxStreamingDurationSeconds) {
+		var ret int32
+		return ret
+	}
+	return *o.MaxStreamingDurationSeconds
+}
+
+// GetMaxStreamingDurationSecondsOk returns a tuple with the MaxStreamingDurationSeconds field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *CreateLLMProviderRequest) GetMaxStreamingDurationSecondsOk() (*int32, bool) {
+	if o == nil || IsNil(o.MaxStreamingDurationSeconds) {
+		return nil, false
+	}
+	return o.MaxStreamingDurationSeconds, true
+}
+
+// HasMaxStreamingDurationSeconds returns a boolean if a field has been set.
+func (o *CreateLLMProviderRequest) HasMaxStreamingDurationSeconds() bool {
+	if o != nil && !IsNil(o.MaxStreamingDurationSeconds) {
+		return true
+	}
+
+	return false
+}
+
+// SetMaxStreamingDurationSeconds gets a reference to the given int32 and assigns it to the MaxStreamingDurationSeconds field.
+func (o *CreateLLMProviderRequest) SetMaxStreamingDurationSeconds(v int32) {
+	o.MaxStreamingDurationSeconds = &v
+}
+
 func (o CreateLLMProviderRequest) MarshalJSON() ([]byte, error) {
 	toSerialize, err := o.ToMap()
 	if err != nil {
@@ -508,6 +542,9 @@ func (o CreateLLMProviderRequest) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.Gateways) {
 		toSerialize["gateways"] = o.Gateways
+	}
+	if !IsNil(o.MaxStreamingDurationSeconds) {
+		toSerialize["maxStreamingDurationSeconds"] = o.MaxStreamingDurationSeconds
 	}
 	return toSerialize, nil
 }

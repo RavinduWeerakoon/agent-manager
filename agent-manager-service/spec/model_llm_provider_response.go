@@ -49,6 +49,8 @@ type LLMProviderResponse struct {
 	// Provider status
 	Status   string   `json:"status"`
 	Gateways []string `json:"gateways,omitempty"`
+	// Max duration (seconds) the egress gateway keeps a streaming (SSE) response to this provider open before cutting it off.
+	MaxStreamingDurationSeconds *int32 `json:"maxStreamingDurationSeconds,omitempty"`
 	// Whether the provider is available in the catalog
 	InCatalog *bool `json:"inCatalog,omitempty"`
 	// Timestamp when the resource was created
@@ -562,6 +564,38 @@ func (o *LLMProviderResponse) SetGateways(v []string) {
 	o.Gateways = v
 }
 
+// GetMaxStreamingDurationSeconds returns the MaxStreamingDurationSeconds field value if set, zero value otherwise.
+func (o *LLMProviderResponse) GetMaxStreamingDurationSeconds() int32 {
+	if o == nil || IsNil(o.MaxStreamingDurationSeconds) {
+		var ret int32
+		return ret
+	}
+	return *o.MaxStreamingDurationSeconds
+}
+
+// GetMaxStreamingDurationSecondsOk returns a tuple with the MaxStreamingDurationSeconds field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *LLMProviderResponse) GetMaxStreamingDurationSecondsOk() (*int32, bool) {
+	if o == nil || IsNil(o.MaxStreamingDurationSeconds) {
+		return nil, false
+	}
+	return o.MaxStreamingDurationSeconds, true
+}
+
+// HasMaxStreamingDurationSeconds returns a boolean if a field has been set.
+func (o *LLMProviderResponse) HasMaxStreamingDurationSeconds() bool {
+	if o != nil && !IsNil(o.MaxStreamingDurationSeconds) {
+		return true
+	}
+
+	return false
+}
+
+// SetMaxStreamingDurationSeconds gets a reference to the given int32 and assigns it to the MaxStreamingDurationSeconds field.
+func (o *LLMProviderResponse) SetMaxStreamingDurationSeconds(v int32) {
+	o.MaxStreamingDurationSeconds = &v
+}
+
 // GetInCatalog returns the InCatalog field value if set, zero value otherwise.
 func (o *LLMProviderResponse) GetInCatalog() bool {
 	if o == nil || IsNil(o.InCatalog) {
@@ -702,6 +736,9 @@ func (o LLMProviderResponse) ToMap() (map[string]interface{}, error) {
 	toSerialize["status"] = o.Status
 	if !IsNil(o.Gateways) {
 		toSerialize["gateways"] = o.Gateways
+	}
+	if !IsNil(o.MaxStreamingDurationSeconds) {
+		toSerialize["maxStreamingDurationSeconds"] = o.MaxStreamingDurationSeconds
 	}
 	if !IsNil(o.InCatalog) {
 		toSerialize["inCatalog"] = o.InCatalog

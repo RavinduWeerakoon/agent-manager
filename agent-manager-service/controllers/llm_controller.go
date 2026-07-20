@@ -524,18 +524,26 @@ func (c *llmController) UpdateLLMProvider(w http.ResponseWriter, r *http.Request
 	}
 	resolvedContext := utils.GetOrDefault(req.Context, existingContext)
 
+	// Resolve MaxStreamingDurationSeconds: use request value if provided, otherwise
+	// preserve the stored value (same "preserve on omit" rule as Version/Context above).
+	resolvedMaxStreamingDurationSeconds := existing.Configuration.MaxStreamingDurationSeconds
+	if req.MaxStreamingDurationSeconds != nil {
+		resolvedMaxStreamingDurationSeconds = req.MaxStreamingDurationSeconds
+	}
+
 	// Convert spec request to model - create minimal provider with only updatable fields
 	// For update, we need to construct a CreateLLMProviderRequest with the updated fields.
 	// Id (the unique handle) is never changed on update — always taken from the existing record.
 	providerReq := &spec.CreateLLMProviderRequest{
-		Id:             existing.Artifact.Handle,
-		Name:           utils.GetOrDefault(req.Name, existing.Configuration.Name),
-		Description:    req.Description,
-		Version:        resolvedVersion,
-		Context:        resolvedContext,
-		Template:       utils.GetOrDefault(req.Template, existing.Configuration.Template),
-		Openapi:        req.Openapi,
-		ModelProviders: req.ModelProviders,
+		Id:                          existing.Artifact.Handle,
+		Name:                        utils.GetOrDefault(req.Name, existing.Configuration.Name),
+		Description:                 req.Description,
+		Version:                     resolvedVersion,
+		Context:                     resolvedContext,
+		Template:                    utils.GetOrDefault(req.Template, existing.Configuration.Template),
+		Openapi:                     req.Openapi,
+		ModelProviders:              req.ModelProviders,
+		MaxStreamingDurationSeconds: resolvedMaxStreamingDurationSeconds,
 	}
 
 	// Add optional fields
