@@ -2304,6 +2304,40 @@ func WithArtifactID(artifactID string) TraitOption {
 	}
 }
 
+// Bounds and default for the user-configurable streaming duration
+// (InputInterface.MaxStreamingDurationSeconds), which becomes the
+// api-configuration trait's resilienceTimeout parameter. These are the single
+// source of truth for the 1-3600 bound and the 30s default on the Go side;
+// callers (e.g. services/agent_manager.go) must reference these constants
+// rather than repeating the literals.
+const (
+	// DefaultResilienceTimeoutSeconds preserves today's effective hardcoded
+	// gateway route timeout when no streaming duration is configured.
+	DefaultResilienceTimeoutSeconds int32 = 30
+	// MinResilienceTimeoutSeconds is the minimum allowed streaming duration, in seconds.
+	MinResilienceTimeoutSeconds int32 = 1
+	// MaxResilienceTimeoutSeconds is the maximum allowed streaming duration (1 hour), in seconds.
+	MaxResilienceTimeoutSeconds int32 = 3600
+)
+
+// formatResilienceTimeout converts a whole-second duration into the gateway's
+// duration string format (e.g. 30 -> "30s"). This is the single shared
+// helper for that conversion; do not reimplement it at other call sites.
+func formatResilienceTimeout(seconds int32) string {
+	return fmt.Sprintf("%ds", seconds)
+}
+
+// WithResilienceTimeout sets the resilience (streaming) timeout for the
+// api-configuration trait. seconds is expected to already be resolved and
+// bounds-checked by the caller (see MinResilienceTimeoutSeconds /
+// MaxResilienceTimeoutSeconds); it is formatted as a gateway duration string
+// (e.g. "30s") via formatResilienceTimeout.
+func WithResilienceTimeout(seconds int32) TraitOption {
+	return func(params map[string]interface{}) {
+		params["resilienceTimeout"] = formatResilienceTimeout(seconds)
+	}
+}
+
 // APIKeyAuthPolicy returns the policy map for API key authentication.
 func APIKeyAuthPolicy() map[string]interface{} {
 	return map[string]interface{}{
@@ -2427,11 +2461,12 @@ func (c *openChoreoClient) buildTrait(ctx context.Context, namespaceName, projec
 
 func (c *openChoreoClient) buildAPIConfigurationTraitParameters(componentName string, opts ...TraitOption) (map[string]interface{}, error) {
 	params := map[string]interface{}{
-		"apiName":          componentName,
-		"apiVersion":       "v1.0",
-		"context":          fmt.Sprintf("/%s", componentName),
-		"upstreamPort":     config.GetConfig().DefaultChatAPI.DefaultHTTPPort,
-		"upstreamBasePath": config.GetConfig().DefaultChatAPI.DefaultBasePath,
+		"apiName":           componentName,
+		"apiVersion":        "v1.0",
+		"context":           fmt.Sprintf("/%s", componentName),
+		"upstreamPort":      config.GetConfig().DefaultChatAPI.DefaultHTTPPort,
+		"upstreamBasePath":  config.GetConfig().DefaultChatAPI.DefaultBasePath,
+		"resilienceTimeout": formatResilienceTimeout(DefaultResilienceTimeoutSeconds),
 	}
 	for _, opt := range opts {
 		opt(params)

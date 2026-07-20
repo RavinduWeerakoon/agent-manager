@@ -26,6 +26,8 @@ type InputInterface struct {
 	Schema *InputInterfaceSchema `json:"schema,omitempty"`
 	// Base path for the endpoint
 	BasePath *string `json:"basePath,omitempty"`
+	// Maximum duration, in seconds, that a streaming (e.g. SSE) response from this endpoint may remain open before the gateway times it out. Defaults to 30 seconds when unset.
+	MaxStreamingDurationSeconds *int32 `json:"maxStreamingDurationSeconds,omitempty"`
 }
 
 // NewInputInterface instantiates a new InputInterface object
@@ -166,6 +168,38 @@ func (o *InputInterface) SetBasePath(v string) {
 	o.BasePath = &v
 }
 
+// GetMaxStreamingDurationSeconds returns the MaxStreamingDurationSeconds field value if set, zero value otherwise.
+func (o *InputInterface) GetMaxStreamingDurationSeconds() int32 {
+	if o == nil || IsNil(o.MaxStreamingDurationSeconds) {
+		var ret int32
+		return ret
+	}
+	return *o.MaxStreamingDurationSeconds
+}
+
+// GetMaxStreamingDurationSecondsOk returns a tuple with the MaxStreamingDurationSeconds field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *InputInterface) GetMaxStreamingDurationSecondsOk() (*int32, bool) {
+	if o == nil || IsNil(o.MaxStreamingDurationSeconds) {
+		return nil, false
+	}
+	return o.MaxStreamingDurationSeconds, true
+}
+
+// HasMaxStreamingDurationSeconds returns a boolean if a field has been set.
+func (o *InputInterface) HasMaxStreamingDurationSeconds() bool {
+	if o != nil && !IsNil(o.MaxStreamingDurationSeconds) {
+		return true
+	}
+
+	return false
+}
+
+// SetMaxStreamingDurationSeconds gets a reference to the given int32 and assigns it to the MaxStreamingDurationSeconds field.
+func (o *InputInterface) SetMaxStreamingDurationSeconds(v int32) {
+	o.MaxStreamingDurationSeconds = &v
+}
+
 func (o InputInterface) MarshalJSON() ([]byte, error) {
 	toSerialize, err := o.ToMap()
 	if err != nil {
@@ -185,6 +219,9 @@ func (o InputInterface) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.BasePath) {
 		toSerialize["basePath"] = o.BasePath
+	}
+	if !IsNil(o.MaxStreamingDurationSeconds) {
+		toSerialize["maxStreamingDurationSeconds"] = o.MaxStreamingDurationSeconds
 	}
 	return toSerialize, nil
 }

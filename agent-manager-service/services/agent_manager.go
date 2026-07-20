@@ -326,6 +326,21 @@ func mapInputInterface(specInterface *spec.InputInterface) *client.InputInterfac
 	return config
 }
 
+// resolveResilienceTimeoutSeconds is the single resolution site for the
+// user-configurable streaming duration (InputInterface.MaxStreamingDurationSeconds),
+// shared by both the create-time and deploy-time api-configuration trait builders.
+// requested is nil when the field is unset. Any value outside
+// [client.MinResilienceTimeoutSeconds, client.MaxResilienceTimeoutSeconds] is treated
+// as if it were unset and falls back to client.DefaultResilienceTimeoutSeconds — this
+// guard is enforced here (not only via console-side Zod validation) because the public
+// API can be called directly.
+func resolveResilienceTimeoutSeconds(requested *int32) int32 {
+	if requested != nil && *requested >= client.MinResilienceTimeoutSeconds && *requested <= client.MaxResilienceTimeoutSeconds {
+		return *requested
+	}
+	return client.DefaultResilienceTimeoutSeconds
+}
+
 // buildCreateTraitRequests collects all traits needed during agent creation into a single
 // list so they can be attached in one GET-UPDATE cycle, avoiding resource version conflicts.
 // artifactID is the UUID of the agent's artifact record (used for api-configuration trait).
@@ -443,6 +458,11 @@ func (s *agentManagerService) buildCreateTraitRequests(ctx context.Context, ouID
 		if req.InputInterface != nil && req.InputInterface.BasePath != nil && *req.InputInterface.BasePath != "" {
 			basePath = *req.InputInterface.BasePath
 		}
+		var requestedStreamingDurationSeconds *int32
+		if req.InputInterface != nil {
+			requestedStreamingDurationSeconds = req.InputInterface.MaxStreamingDurationSeconds
+		}
+		streamingDurationSeconds := resolveResilienceTimeoutSeconds(requestedStreamingDurationSeconds)
 		corsConfig := config.GetAgentWorkloadConfig().CORS
 		createPolicies := []map[string]interface{}{
 			client.CORSPolicy(
@@ -458,6 +478,7 @@ func (s *agentManagerService) buildCreateTraitRequests(ctx context.Context, ouID
 			client.WithUpstreamPort(port),
 			client.WithUpstreamBasePath(basePath),
 			client.WithPolicies(createPolicies),
+			client.WithResilienceTimeout(streamingDurationSeconds),
 		}
 		// backendHost, backendPort, gatewayTarget were previously injected per-environment
 		// here; the api-management trait now derives them from the apiGatewayName convention
@@ -2674,6 +2695,11 @@ func (s *agentManagerService) DeployAgent(ctx context.Context, ouID string, proj
 		} else {
 			traitOpts = append(traitOpts, client.WithUpstreamBasePath(config.GetConfig().DefaultChatAPI.DefaultBasePath))
 		}
+		var persistedStreamingDurationSeconds *int32
+		if agent.InputInterface != nil {
+			persistedStreamingDurationSeconds = &agent.InputInterface.MaxStreamingDurationSeconds
+		}
+		traitOpts = append(traitOpts, client.WithResilienceTimeout(resolveResilienceTimeoutSeconds(persistedStreamingDurationSeconds)))
 		traitOpts = append(traitOpts, client.WithPolicies(policies))
 
 		componentDeployConfig.TraitsToAttach = append(componentDeployConfig.TraitsToAttach, client.TraitRequest{

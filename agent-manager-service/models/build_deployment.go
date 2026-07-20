@@ -115,6 +115,13 @@ type InputInterface struct {
 	BasePath   string                `json:"basePath"`
 	Visibility []string              `json:"visibility"`
 	Schema     *InputInterfaceSchema `json:"schema,omitempty"`
+	// MaxStreamingDurationSeconds mirrors the public API's InputInterface field of the
+	// same name. Unlike Port/BasePath, it is not currently round-tripped from the
+	// component's build workflow parameters (see extractInputInterface in
+	// clients/openchoreosvc/client/components.go) since it is a gateway resilience
+	// setting, not a build-declared endpoint fact; it is zero-valued until a future
+	// change adds a persistence/round-trip path.
+	MaxStreamingDurationSeconds int32 `json:"maxStreamingDurationSeconds,omitempty"`
 }
 
 // InputInterfaceSchema represents schema configuration

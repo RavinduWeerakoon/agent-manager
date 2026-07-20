@@ -11686,6 +11686,14 @@ components:
         basePath:
           type: string
           description: Base path for the endpoint
+        maxStreamingDurationSeconds:
+          type: integer
+          description: >-
+            Maximum duration, in seconds, that a streaming (e.g. SSE) response
+            from this endpoint may remain open before the gateway times it
+            out. Defaults to 30 seconds when unset.
+          minimum: 1
+          maximum: 3600
     InputInterfaceSchema:
       type: object
       properties:
