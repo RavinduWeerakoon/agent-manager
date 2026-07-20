@@ -124,6 +124,12 @@ type InputInterfaceConfig struct {
 	Port       int32
 	SchemaPath string
 	BasePath   string
+	// MaxStreamingDurationSeconds is the user-configurable gateway streaming
+	// timeout (nil = unset). It round-trips through the component's own
+	// endpoint workflow parameters exactly like Port/BasePath: buildEndpoints/
+	// buildEndpointsFromInputInterface write it into the "endpoints" array on
+	// create/build-parameter-update, and extractInputInterface reads it back.
+	MaxStreamingDurationSeconds *int32
 }
 
 // UpdateComponentRequest contains data for updating a component (patch operation)
@@ -306,13 +312,14 @@ type buildEnvVar struct {
 }
 
 type workflowEndpoint struct {
-	Name           string   `json:"name"`
-	Port           int32    `json:"port"`
-	Type           string   `json:"type"`
-	BasePath       string   `json:"basePath"`
-	Visibility     []string `json:"visibility"`
-	SchemaFilePath string   `json:"schemaFilePath,omitempty"`
-	SchemaContent  string   `json:"schemaContent,omitempty"`
+	Name                        string   `json:"name"`
+	Port                        int32    `json:"port"`
+	Type                        string   `json:"type"`
+	BasePath                    string   `json:"basePath"`
+	Visibility                  []string `json:"visibility"`
+	SchemaFilePath              string   `json:"schemaFilePath,omitempty"`
+	SchemaContent               string   `json:"schemaContent,omitempty"`
+	MaxStreamingDurationSeconds *int32   `json:"maxStreamingDurationSeconds,omitempty"`
 }
 
 // CreateSecretReferenceRequest contains data for creating a SecretReference CR

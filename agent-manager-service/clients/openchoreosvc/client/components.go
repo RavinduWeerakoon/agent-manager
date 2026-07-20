@@ -459,7 +459,7 @@ func buildEndpoints(req CreateComponentRequest) ([]map[string]any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read Chat API schema: %w", err)
 		}
-		endpoints = append(endpoints, map[string]any{
+		endpoint := map[string]any{
 			"name":          fmt.Sprintf("%s-endpoint", req.Name),
 			"port":          config.GetConfig().DefaultChatAPI.DefaultHTTPPort,
 			"type":          string(utils.InputInterfaceTypeHTTP),
@@ -467,11 +467,15 @@ func buildEndpoints(req CreateComponentRequest) ([]map[string]any, error) {
 			"visibility":    DefaultEndpointVisibility,
 			"schemaType":    SchemaTypeOpenAPI,
 			"schemaContent": schemaContent,
-		})
+		}
+		if req.InputInterface != nil && req.InputInterface.MaxStreamingDurationSeconds != nil {
+			endpoint["maxStreamingDurationSeconds"] = *req.InputInterface.MaxStreamingDurationSeconds
+		}
+		endpoints = append(endpoints, endpoint)
 	}
 
 	if req.AgentType.Type == string(utils.AgentTypeAPI) && req.AgentType.SubType == string(utils.AgentSubTypeCustomAPI) && req.InputInterface != nil {
-		endpoints = append(endpoints, map[string]any{
+		endpoint := map[string]any{
 			"name":           fmt.Sprintf("%s-endpoint", req.Name),
 			"port":           req.InputInterface.Port,
 			"type":           req.InputInterface.Type,
@@ -479,7 +483,11 @@ func buildEndpoints(req CreateComponentRequest) ([]map[string]any, error) {
 			"visibility":     DefaultEndpointVisibility,
 			"schemaType":     SchemaTypeOpenAPI,
 			"schemaFilePath": normalizePath(req.InputInterface.SchemaPath),
-		})
+		}
+		if req.InputInterface.MaxStreamingDurationSeconds != nil {
+			endpoint["maxStreamingDurationSeconds"] = *req.InputInterface.MaxStreamingDurationSeconds
+		}
+		endpoints = append(endpoints, endpoint)
 	}
 
 	return endpoints, nil
@@ -2913,6 +2921,7 @@ func convertComponentFromTyped(comp *gen.Component) (*models.AgentResponse, erro
 					agent.InputInterface.Schema = inputInterface.Schema
 					agent.InputInterface.BasePath = inputInterface.BasePath
 					agent.InputInterface.Visibility = inputInterface.Visibility
+					agent.InputInterface.MaxStreamingDurationSeconds = inputInterface.MaxStreamingDurationSeconds
 				}
 			}
 		}
@@ -3044,6 +3053,10 @@ func extractInputInterface(params map[string]interface{}) *models.InputInterface
 	}
 	if port, ok := ep["port"].(float64); ok {
 		inputInterface.Port = int32(port)
+	}
+	if maxStreamingDurationSeconds, ok := ep["maxStreamingDurationSeconds"].(float64); ok {
+		v := int32(maxStreamingDurationSeconds)
+		inputInterface.MaxStreamingDurationSeconds = &v
 	}
 	if schemaPath := getMapString(ep, "schemaFilePath"); schemaPath != "" {
 		inputInterface.Schema = &models.InputInterfaceSchema{Path: schemaPath}

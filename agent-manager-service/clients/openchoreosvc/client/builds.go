@@ -397,6 +397,9 @@ func buildEndpointsFromInputInterface(componentName string, inputInterface *Inpu
 		endpoints[0]["schemaFilePath"] = inputInterface.SchemaPath
 		endpoints[0]["schemaType"] = SchemaTypeOpenAPI
 	}
+	if inputInterface.MaxStreamingDurationSeconds != nil {
+		endpoints[0]["maxStreamingDurationSeconds"] = *inputInterface.MaxStreamingDurationSeconds
+	}
 	return endpoints, nil
 }
 

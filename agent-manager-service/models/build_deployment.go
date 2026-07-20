@@ -116,12 +116,17 @@ type InputInterface struct {
 	Visibility []string              `json:"visibility"`
 	Schema     *InputInterfaceSchema `json:"schema,omitempty"`
 	// MaxStreamingDurationSeconds mirrors the public API's InputInterface field of the
-	// same name. Unlike Port/BasePath, it is not currently round-tripped from the
-	// component's build workflow parameters (see extractInputInterface in
-	// clients/openchoreosvc/client/components.go) since it is a gateway resilience
-	// setting, not a build-declared endpoint fact; it is zero-valued until a future
-	// change adds a persistence/round-trip path.
-	MaxStreamingDurationSeconds int32 `json:"maxStreamingDurationSeconds,omitempty"`
+	// same name. It round-trips through the component's own build workflow
+	// parameters exactly like Port/BasePath: buildEndpoints (create) and
+	// buildEndpointsFromInputInterface (UpdateComponentBuildParameters) write it
+	// into the "endpoints" array's "maxStreamingDurationSeconds" key, and
+	// extractInputInterface (see clients/openchoreosvc/client/components.go) reads
+	// it back on every GetComponent. Nil means "not configured" — either the agent
+	// predates this field or it was never set — and callers must fall back to
+	// client.DefaultResilienceTimeoutSeconds via resolveResilienceTimeoutSeconds
+	// rather than treating a bare zero as a valid value (0 is out of the
+	// [Min,Max]ResilienceTimeoutSeconds bounds anyway).
+	MaxStreamingDurationSeconds *int32 `json:"maxStreamingDurationSeconds,omitempty"`
 }
 
 // InputInterfaceSchema represents schema configuration

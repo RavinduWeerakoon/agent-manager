@@ -19,12 +19,14 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -33,6 +35,8 @@ import (
 	"github.com/wso2/agent-manager/agent-manager-service/clients/thundersvc"
 	"github.com/wso2/agent-manager/agent-manager-service/instrumentation"
 	"github.com/wso2/agent-manager/agent-manager-service/models"
+	"github.com/wso2/agent-manager/agent-manager-service/repositories"
+	"github.com/wso2/agent-manager/agent-manager-service/repositories/repomocks"
 	"github.com/wso2/agent-manager/agent-manager-service/spec"
 	"github.com/wso2/agent-manager/agent-manager-service/utils"
 )
@@ -1322,4 +1326,262 @@ func TestListAgents_LabelsPassThroughUnmodified(t *testing.T) {
 		require.Len(t, result, 1)
 		assert.Equal(t, "agent-1", result[0].Name)
 	})
+}
+
+// int32Ptr returns a pointer to the given int32, for building *int32 request
+// fields (e.g. InputInterface.MaxStreamingDurationSeconds) inline in tests.
+func int32Ptr(v int32) *int32 {
+	return &v
+}
+
+// applyTraitOpts applies a slice of client.TraitOption to a fresh params map
+// and returns it, mirroring what buildAPIConfigurationTraitParameters does
+// internally when a trait is actually attached. Tests use this to inspect
+// the parameters a TraitRequest's Opts would produce without needing a real
+// OpenChoreo client.
+func applyTraitOpts(opts []client.TraitOption) map[string]interface{} {
+	params := map[string]interface{}{}
+	for _, opt := range opts {
+		opt(params)
+	}
+	return params
+}
+
+// findTraitRequest returns the first TraitRequest of the given type, or nil.
+func findTraitRequest(traits []client.TraitRequest, traitType client.TraitType) *client.TraitRequest {
+	for i := range traits {
+		if traits[i].TraitType == traitType {
+			return &traits[i]
+		}
+	}
+	return nil
+}
+
+// TestMapInputInterface_MaxStreamingDurationSeconds covers the write side of
+// the round-trip fix: mapInputInterface must copy
+// spec.InputInterface.MaxStreamingDurationSeconds straight through (pointer
+// copy, no bounds re-validation) into client.InputInterfaceConfig, which is
+// what buildEndpoints/buildEndpointsFromInputInterface later persist into the
+// component's endpoint workflow parameters.
+func TestMapInputInterface_MaxStreamingDurationSeconds(t *testing.T) {
+	t.Run("set value is copied through", func(t *testing.T) {
+		specInterface := &spec.InputInterface{
+			Type:                        "HTTP",
+			MaxStreamingDurationSeconds: int32Ptr(45),
+		}
+
+		got := mapInputInterface(specInterface)
+
+		require.NotNil(t, got)
+		require.NotNil(t, got.MaxStreamingDurationSeconds)
+		assert.Equal(t, int32(45), *got.MaxStreamingDurationSeconds)
+	})
+
+	t.Run("unset (nil) stays nil, not defaulted here", func(t *testing.T) {
+		specInterface := &spec.InputInterface{Type: "HTTP"}
+
+		got := mapInputInterface(specInterface)
+
+		require.NotNil(t, got)
+		assert.Nil(t, got.MaxStreamingDurationSeconds)
+	})
+
+	t.Run("out-of-bounds value is still copied through unvalidated", func(t *testing.T) {
+		// resolveResilienceTimeoutSeconds is the single bounds-checking site,
+		// applied downstream wherever this value is consumed for a trait
+		// build — mapInputInterface itself must not re-validate.
+		specInterface := &spec.InputInterface{
+			Type:                        "HTTP",
+			MaxStreamingDurationSeconds: int32Ptr(10000),
+		}
+
+		got := mapInputInterface(specInterface)
+
+		require.NotNil(t, got)
+		require.NotNil(t, got.MaxStreamingDurationSeconds)
+		assert.Equal(t, int32(10000), *got.MaxStreamingDurationSeconds)
+	})
+}
+
+func TestResolveResilienceTimeoutSeconds(t *testing.T) {
+	tests := []struct {
+		name      string
+		requested *int32
+		want      int32
+	}{
+		{"nil (unset) falls back to default", nil, client.DefaultResilienceTimeoutSeconds},
+		{"in-bounds custom value is used", int32Ptr(45), 45},
+		{"minimum bound is accepted", int32Ptr(client.MinResilienceTimeoutSeconds), client.MinResilienceTimeoutSeconds},
+		{"maximum bound is accepted", int32Ptr(client.MaxResilienceTimeoutSeconds), client.MaxResilienceTimeoutSeconds},
+		{"zero (below minimum) falls back to default", int32Ptr(0), client.DefaultResilienceTimeoutSeconds},
+		{"negative value falls back to default", int32Ptr(-5), client.DefaultResilienceTimeoutSeconds},
+		{"above maximum falls back to default", int32Ptr(client.MaxResilienceTimeoutSeconds + 1), client.DefaultResilienceTimeoutSeconds},
+		{"far above maximum falls back to default", int32Ptr(10000), client.DefaultResilienceTimeoutSeconds},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveResilienceTimeoutSeconds(tc.requested)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestBuildCreateTraitRequests_APIAgent_ResilienceTimeout covers the create-time
+// wiring of InputInterface.MaxStreamingDurationSeconds into the api-management
+// trait's resilienceTimeout parameter (services/agent_manager.go's
+// buildCreateTraitRequests, ~line 439 at the time of writing).
+func TestBuildCreateTraitRequests_APIAgent_ResilienceTimeout(t *testing.T) {
+	tests := []struct {
+		name                        string
+		maxStreamingDurationSeconds *int32
+		wantResilienceTimeout       string
+	}{
+		{"set within bounds produces \"<N>s\"", int32Ptr(45), "45s"},
+		{"omitted falls back to \"30s\"", nil, "30s"},
+		{"zero (out of bounds) falls back to \"30s\"", int32Ptr(0), "30s"},
+		{"far above maximum (out of bounds) falls back to \"30s\"", int32Ptr(10000), "30s"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &agentManagerService{logger: discardLogger()}
+			req := &spec.CreateAgentRequest{
+				Name:      "agent-1",
+				AgentType: &spec.AgentType{Type: string(utils.AgentTypeAPI)},
+				InputInterface: &spec.InputInterface{
+					MaxStreamingDurationSeconds: tc.maxStreamingDurationSeconds,
+				},
+			}
+
+			traits, err := s.buildCreateTraitRequests(context.Background(), "acme", "proj1", "artifact-1", "dev", req)
+
+			require.NoError(t, err)
+			apiTrait := findTraitRequest(traits, client.TraitAPIManagement)
+			require.NotNil(t, apiTrait, "expected an api-management trait request to be built for an API agent")
+			params := applyTraitOpts(apiTrait.Opts)
+			assert.Equal(t, tc.wantResilienceTimeout, params["resilienceTimeout"])
+		})
+	}
+}
+
+// deployAPIAgentMocks builds the minimal set of OpenChoreo client and
+// repository mocks needed to drive DeployAgent through to the api-management
+// trait build for an internal API agent, with maxStreamingDurationSeconds
+// controlling the persisted InputInterface value returned by GetComponent.
+// A nil pointer simulates a component whose endpoint workflow parameters
+// never had "maxStreamingDurationSeconds" set (e.g. an agent created before
+// this field existed, or created without it) — extractInputInterface returns
+// nil for the field in that case, not zero.
+func deployAPIAgentMocks(maxStreamingDurationSeconds *int32) (*agentManagerService, *client.ComponentDeploymentConfigRequest) {
+	var capturedDeployConfig client.ComponentDeploymentConfigRequest
+	ocClient := &clientmocks.OpenChoreoClientMock{
+		GetOrganizationFunc: func(_ context.Context, name string) (*models.OrganizationResponse, error) {
+			return &models.OrganizationResponse{Name: name}, nil
+		},
+		GetComponentFunc: func(_ context.Context, _, _, _ string) (*models.AgentResponse, error) {
+			return &models.AgentResponse{
+				Provisioning: models.Provisioning{Type: string(utils.InternalAgent)},
+				Type:         models.AgentType{Type: string(utils.AgentTypeAPI)},
+				InputInterface: &models.InputInterface{
+					Port:                        8000,
+					BasePath:                    "/",
+					MaxStreamingDurationSeconds: maxStreamingDurationSeconds,
+				},
+			}, nil
+		},
+		GetProjectDeploymentPipelineFunc: func(_ context.Context, _, _ string) (*models.DeploymentPipelineResponse, error) {
+			return &models.DeploymentPipelineResponse{PromotionPaths: []models.PromotionPath{
+				{SourceEnvironmentRef: "dev", TargetEnvironmentRefs: []models.TargetEnvironmentRef{{Name: "staging"}}},
+			}}, nil
+		},
+		GetComponentConfigurationsFunc: func(context.Context, string, string, string, string) ([]models.EnvVars, error) {
+			return nil, nil
+		},
+		GetEnvironmentFunc: func(_ context.Context, _, name string) (*models.EnvironmentResponse, error) {
+			return &models.EnvironmentResponse{Name: name, UUID: "env-uuid"}, nil
+		},
+		IsDeploymentInProgressFunc: func(context.Context, string, string, string) (bool, error) {
+			return false, nil
+		},
+		ReplaceComponentEnvVarsFunc: func(context.Context, string, string, string, []client.EnvVar) error {
+			return nil
+		},
+		ReplaceComponentFileMountsFunc: func(context.Context, string, string, string, []client.FileVar) error {
+			return nil
+		},
+		UpdateComponentDeploymentConfigFunc: func(_ context.Context, _, _, _ string, req client.ComponentDeploymentConfigRequest) error {
+			capturedDeployConfig = req
+			return nil
+		},
+		DeployFunc: func(context.Context, string, string, string, client.DeployRequest) error {
+			return nil
+		},
+		UpdateReleaseBindingTraitConfigsFunc: func(context.Context, string, string, string, map[string]interface{}, map[string]interface{}) error {
+			return nil
+		},
+	}
+	injector := &agentIdentityInjectorStub{
+		EnvVarsForEnvironmentFunc: func(context.Context, string, string, string, string) ([]client.EnvVar, error) {
+			return nil, nil
+		},
+	}
+	artifactRepo := &repomocks.ArtifactRepositoryMock{
+		GetByHandleFunc: func(handle, orgUUID string) (*models.Artifact, error) {
+			return &models.Artifact{UUID: uuid.Must(uuid.NewV7()), Handle: handle, Kind: models.KindAgent, OUID: orgUUID}, nil
+		},
+	}
+	agentConfigRepo := &repomocks.AgentConfigRepositoryMock{
+		GetFunc: func(string, string, string, string) (*models.AgentConfig, error) {
+			return nil, repositories.ErrAgentConfigNotFound
+		},
+		UpsertFunc: func(*models.AgentConfig) error {
+			return nil
+		},
+	}
+	s := &agentManagerService{
+		ocClient:               ocClient,
+		agentIdentityInjection: injector,
+		artifactRepo:           artifactRepo,
+		agentConfigRepo:        agentConfigRepo,
+		logger:                 discardLogger(),
+	}
+	return s, &capturedDeployConfig
+}
+
+// TestDeployAgent_APIAgent_ResilienceTimeout covers the deploy-time wiring of
+// agent.InputInterface.MaxStreamingDurationSeconds into the api-management
+// trait's resilienceTimeout parameter (services/agent_manager.go's DeployAgent,
+// ~line 2700 at the time of writing). This is the round-trip fix: previously
+// agent.InputInterface.MaxStreamingDurationSeconds was a bare int32 that never
+// got populated by GetComponent, so deploy always silently fell back to the
+// default regardless of what was persisted. Now that it comes back from the
+// component's own endpoint workflow parameters via extractInputInterface (see
+// TestConvertComponentFromTyped_MaxStreamingDurationSeconds in the client
+// package for that half of the round-trip), a persisted in-bounds value must
+// actually reach the trait, not just the true-zero/nil fallback cases.
+func TestDeployAgent_APIAgent_ResilienceTimeout(t *testing.T) {
+	tests := []struct {
+		name                        string
+		maxStreamingDurationSeconds *int32
+		wantResilienceTimeout       string
+	}{
+		{"persisted value within bounds produces \"<N>s\"", int32Ptr(45), "45s"},
+		{"persisted value at the upper bound produces \"<N>s\"", int32Ptr(client.MaxResilienceTimeoutSeconds), fmt.Sprintf("%ds", client.MaxResilienceTimeoutSeconds)},
+		{"unset (nil - field never persisted) falls back to \"30s\"", nil, "30s"},
+		{"persisted zero (out of bounds) falls back to \"30s\"", int32Ptr(0), "30s"},
+		{"far above maximum (out of bounds) falls back to \"30s\"", int32Ptr(10000), "30s"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, capturedDeployConfig := deployAPIAgentMocks(tc.maxStreamingDurationSeconds)
+
+			env, err := s.DeployAgent(context.Background(), "acme", "proj1", "my-agent", &spec.DeployAgentRequest{ImageId: "registry.example.com/my-agent:v1"})
+
+			require.NoError(t, err)
+			assert.Equal(t, "dev", env)
+			apiTrait := findTraitRequest(capturedDeployConfig.TraitsToAttach, client.TraitAPIManagement)
+			require.NotNil(t, apiTrait, "expected an api-management trait to be attached for an API agent deploy")
+			params := applyTraitOpts(apiTrait.Opts)
+			assert.Equal(t, tc.wantResilienceTimeout, params["resilienceTimeout"])
+		})
+	}
 }

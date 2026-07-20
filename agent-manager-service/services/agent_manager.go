@@ -322,6 +322,7 @@ func mapInputInterface(specInterface *spec.InputInterface) *client.InputInterfac
 	if specInterface.Schema != nil {
 		config.SchemaPath = utils.StrPointerAsStr(specInterface.Schema.Path, "")
 	}
+	config.MaxStreamingDurationSeconds = specInterface.MaxStreamingDurationSeconds
 
 	return config
 }
@@ -2697,7 +2698,7 @@ func (s *agentManagerService) DeployAgent(ctx context.Context, ouID string, proj
 		}
 		var persistedStreamingDurationSeconds *int32
 		if agent.InputInterface != nil {
-			persistedStreamingDurationSeconds = &agent.InputInterface.MaxStreamingDurationSeconds
+			persistedStreamingDurationSeconds = agent.InputInterface.MaxStreamingDurationSeconds
 		}
 		traitOpts = append(traitOpts, client.WithResilienceTimeout(resolveResilienceTimeoutSeconds(persistedStreamingDurationSeconds)))
 		traitOpts = append(traitOpts, client.WithPolicies(policies))
