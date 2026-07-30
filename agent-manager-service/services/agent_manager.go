@@ -2340,7 +2340,7 @@ func (s *agentManagerService) DeleteAgent(ctx context.Context, ouID string, proj
 		translatedErr := translateAgentError(err)
 		if errors.Is(translatedErr, utils.ErrAgentNotFound) {
 			s.logger.Warn("Agent not found during deletion, delete is idempotent", "agentName", agentName, "ouID", ouID, "projectName", projectName)
-			if configErr := s.agentConfigRepo.DeleteAllByAgent(ouID, projectName, agentName); configErr != nil {
+			if configErr := s.agentConfigRepo.DeleteAllByAgent(ctx, ouID, projectName, agentName); configErr != nil {
 				s.logger.Warn("Failed to delete agent configs from database", "agentName", agentName, "error", configErr)
 			}
 			s.deleteAgentAPIArtifact(ctx, ouID, projectName, agentName)
@@ -2364,7 +2364,7 @@ func (s *agentManagerService) DeleteAgent(ctx context.Context, ouID string, proj
 	}
 
 	// Cleanup agent configs from database
-	if configErr := s.agentConfigRepo.DeleteAllByAgent(ouID, projectName, agentName); configErr != nil {
+	if configErr := s.agentConfigRepo.DeleteAllByAgent(ctx, ouID, projectName, agentName); configErr != nil {
 		s.logger.Warn("Failed to delete agent configs from database", "agentName", agentName, "error", configErr)
 		// Don't fail the deletion - configs will be orphaned but harmless
 	}

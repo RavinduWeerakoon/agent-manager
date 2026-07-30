@@ -4,6 +4,7 @@
 package repomocks
 
 import (
+	"context"
 	"sync"
 
 	"github.com/wso2/agent-manager/agent-manager-service/models"
@@ -15,7 +16,7 @@ import (
 //
 //		// make and configure a mocked repositories.AgentConfigRepository
 //		mockedAgentConfigRepository := &AgentConfigRepositoryMock{
-//			DeleteAllByAgentFunc: func(ouID string, projectName string, agentName string) error {
+//			DeleteAllByAgentFunc: func(ctx context.Context, ouID string, projectName string, agentName string) error {
 //				panic("mock out the DeleteAllByAgent method")
 //			},
 //			GetFunc: func(ouID string, projectName string, agentName string, environmentName string) (*models.AgentConfig, error) {
@@ -32,7 +33,7 @@ import (
 //	}
 type AgentConfigRepositoryMock struct {
 	// DeleteAllByAgentFunc mocks the DeleteAllByAgent method.
-	DeleteAllByAgentFunc func(ouID string, projectName string, agentName string) error
+	DeleteAllByAgentFunc func(ctx context.Context, ouID string, projectName string, agentName string) error
 
 	// GetFunc mocks the Get method.
 	GetFunc func(ouID string, projectName string, agentName string, environmentName string) (*models.AgentConfig, error)
@@ -44,6 +45,8 @@ type AgentConfigRepositoryMock struct {
 	calls struct {
 		// DeleteAllByAgent holds details about calls to the DeleteAllByAgent method.
 		DeleteAllByAgent []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
 			// OuID is the ouID argument value.
 			OuID string
 			// ProjectName is the projectName argument value.
@@ -74,15 +77,17 @@ type AgentConfigRepositoryMock struct {
 }
 
 // DeleteAllByAgent calls DeleteAllByAgentFunc.
-func (mock *AgentConfigRepositoryMock) DeleteAllByAgent(ouID string, projectName string, agentName string) error {
+func (mock *AgentConfigRepositoryMock) DeleteAllByAgent(ctx context.Context, ouID string, projectName string, agentName string) error {
 	if mock.DeleteAllByAgentFunc == nil {
 		panic("AgentConfigRepositoryMock.DeleteAllByAgentFunc: method is nil but AgentConfigRepository.DeleteAllByAgent was just called")
 	}
 	callInfo := struct {
+		Ctx         context.Context
 		OuID        string
 		ProjectName string
 		AgentName   string
 	}{
+		Ctx:         ctx,
 		OuID:        ouID,
 		ProjectName: projectName,
 		AgentName:   agentName,
@@ -90,7 +95,7 @@ func (mock *AgentConfigRepositoryMock) DeleteAllByAgent(ouID string, projectName
 	mock.lockDeleteAllByAgent.Lock()
 	mock.calls.DeleteAllByAgent = append(mock.calls.DeleteAllByAgent, callInfo)
 	mock.lockDeleteAllByAgent.Unlock()
-	return mock.DeleteAllByAgentFunc(ouID, projectName, agentName)
+	return mock.DeleteAllByAgentFunc(ctx, ouID, projectName, agentName)
 }
 
 // DeleteAllByAgentCalls gets all the calls that were made to DeleteAllByAgent.
@@ -98,11 +103,13 @@ func (mock *AgentConfigRepositoryMock) DeleteAllByAgent(ouID string, projectName
 //
 //	len(mockedAgentConfigRepository.DeleteAllByAgentCalls())
 func (mock *AgentConfigRepositoryMock) DeleteAllByAgentCalls() []struct {
+	Ctx         context.Context
 	OuID        string
 	ProjectName string
 	AgentName   string
 } {
 	var calls []struct {
+		Ctx         context.Context
 		OuID        string
 		ProjectName string
 		AgentName   string
