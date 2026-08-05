@@ -4,4 +4,18 @@ title: Agent Kind & Agent Catalog
 
 # Agent Kind & Agent Catalog
 
-_Content coming soon._
+An **Agent Kind** is a reusable, versioned agent template — a way to publish a built agent so it can be created again (by you or others in the organization) without starting from a source repository each time. The **Catalog** is where published kinds, along with other shareable org-level resources, become discoverable.
+
+## Agent Kind
+
+A kind is versioned: each version pins a specific build (a `buildName` and `imageId`) plus a **config schema** — the list of parameters a consumer must (or may) provide when creating an agent from that version, each marked as secret or not, mandatory or not, with an optional default value.
+
+Publishing a version is deliberately idempotent about what it protects against: the same built image can't be published twice under the same kind, and if another kind in the organization has already published that exact image, publishing fails rather than creating a confusing duplicate. Publishing a new version to an existing kind is otherwise just "create the kind if it doesn't exist yet, then add this version" — there's no separate registration step.
+
+## Agent Catalog
+
+The catalog isn't specific to agent kinds — it's a general **discoverability flag** shared across several resource types: agents, agent kinds, LLM Service Providers, MCP proxies, and MCP proxy mappings all use the same underlying mechanism. A resource is "in the catalog" or not; being in the catalog doesn't change how the resource behaves, only whether it shows up when someone in the organization browses for something to reuse.
+
+## Relationship to Agents
+
+Creating an agent from a published kind is an alternative to pointing at source code directly — see [Choose a Source Type](../tutorials/create-your-first-agent.mdx#step-1-choose-a-source-type) in Create Your First Agent. Either path produces the same kind of running [agent](./agent-lifecycle.mdx); a kind just captures "build once, deploy many times" so a proven agent doesn't need to be rebuilt from scratch for every reuse.

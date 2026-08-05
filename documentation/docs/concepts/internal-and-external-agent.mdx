@@ -4,4 +4,24 @@ title: Internal and External Agent
 
 # Internal and External Agent
 
-_Content coming soon._
+Every agent in WSO2 Agent Manager is one of two types, chosen when it's created and not changeable afterward: **Platform-Hosted** (internal) or **Externally-Hosted** (external).
+
+## Platform-Hosted Agents
+
+A Platform-Hosted agent's full lifecycle is owned by Agent Manager: the platform builds it from a source repository (or a published [Agent Kind](./agent-kind-and-catalog.mdx)), deploys it to each [environment](./environment.mdx) in its project's [deployment pipeline](./deployment-pipeline.mdx), and can promote, roll back, or suspend it — see [Agent and Agent Life Cycle](./agent-lifecycle.mdx).
+
+Because the platform controls the running pod, it can inject configuration directly into it: LLM provider credentials, MCP proxy connection details, and its [AgentID](./agentid.mdx) credential all appear as environment variables the agent code reads at runtime, with no manual wiring required.
+
+## Externally-Hosted Agents
+
+An Externally-Hosted agent already runs somewhere outside Agent Manager — locally, on your own infrastructure, or in a third-party cloud. Agent Manager doesn't build, deploy, promote, or suspend it; registering one only gives the platform a record to attach observability and governance to.
+
+The practical differences that follow from this:
+
+- **No deploy or promote step.** There's nothing for the platform to deploy, so [AgentID](./agentid.mdx) credential provisioning for every environment in the organization begins as soon as the agent is registered, rather than being tied to a deploy.
+- **You wire configuration in yourself.** Since there's no pod to inject into, the platform instead hands you connection details to configure — an API key and OTel endpoint for instrumentation, and endpoint URLs plus API keys for any LLM Service Provider or MCP Proxy the agent uses.
+- **Observability requires instrumenting it.** No traces appear until the agent is connected via the `amp-instrumentation` package (or the manual `init_otel()` path) — see [AMP Instrumentation](../guides/amp-instrumentation.mdx).
+
+## Where the Distinction Shows Up
+
+Both agent types share the same [organization-level resources](./llm-service-provider.mdx) — LLM providers, MCP proxies, gateways — and the same governance model (RBAC, evaluation, [AgentID](./agentid.mdx)). The type only changes *how* an agent gets connected to those resources: injected automatically for Platform-Hosted agents, or configured manually for Externally-Hosted ones.
