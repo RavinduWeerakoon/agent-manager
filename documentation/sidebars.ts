@@ -38,11 +38,11 @@ const sidebars: SidebarsConfig = {
         'concepts/internal-and-external-agent',
         'concepts/agentid',
         'concepts/agent-kind-and-catalog',
-        'concepts/agent-tools',
         'concepts/agent-sandboxing',
         'concepts/evaluation',
         'concepts/observability',
         'concepts/llm-service-provider',
+        'concepts/agent-tools'
       ],
     },
     {
@@ -96,6 +96,8 @@ const sidebars: SidebarsConfig = {
           collapsed: false,
           items: [
             'guides/register-ai-gateway',
+            'guides/register-llm-service-provider',
+            'guides/register-mcp-proxy',
             'guides/environment-management',
             'guides/instrumentation-catalog',
             'guides/amp-instrumentation',
@@ -108,16 +110,7 @@ const sidebars: SidebarsConfig = {
       label: 'Tutorials',
       collapsed: false,
       items: [
-        {
-          type: 'category',
-          label: 'Build and Deploy a Customer-Support Agent',
-          collapsed: false,
-          items: [
-            'tutorials/create-your-first-agent',
-            'tutorials/configure-agent-llm-configuration',
-            'tutorials/configure-agent-mcp-proxies',
-          ],
-        },
+        'tutorials/create-your-first-agent',
         {
           type: 'category',
           label: 'Add Evaluation and Monitoring to an Agent',
@@ -127,15 +120,6 @@ const sidebars: SidebarsConfig = {
           ],
         },
         'tutorials/roll-out-agent-version',
-        {
-          type: 'category',
-          label: 'Add Guardrails to the LLM and MCP Servers the Agent Interacts With',
-          collapsed: false,
-          items: [
-            'tutorials/register-llm-service-provider',
-            'tutorials/register-mcp-proxy',
-          ],
-        },
         {
           type: 'category',
           label: 'Agent Identity and Access Management',

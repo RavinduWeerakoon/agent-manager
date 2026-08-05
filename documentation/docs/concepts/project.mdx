@@ -4,4 +4,19 @@ title: Project
 
 # Project
 
-_Content coming soon._
+A Project is the primary container for your agents in WSO2 Agent Manager — you create agents inside a project, and a project is where a **[Deployment Pipeline](./deployment-pipeline.mdx)** is attached to govern how those agents promote across environments.
+
+## Built on OpenChoreo's Project Abstraction
+
+An Agent Manager Project is an [OpenChoreo Project](https://openchoreo.dev/docs/concepts/developer-abstractions/). In OpenChoreo's own terms, a Project "represents a bounded context in Domain-Driven Design terms — a cohesive collection of components that together implement a specific business capability or application domain." It serves as the primary organizational unit for developers, establishing both a logical grouping of related components and physical boundaries: dedicated namespaces, network boundaries, and security policies.
+
+In Agent Manager, the "components" OpenChoreo's Project groups together are your agents — each agent you create in a project becomes one of that project's underlying OpenChoreo components once it's built and deployed.
+
+## What a Project Holds
+
+- Every **agent** you create or register belongs to one project.
+- A project is bound to exactly one **[Deployment Pipeline](./deployment-pipeline.mdx)**, which determines which environments agents in this project can promote through, and in what order.
+
+## Relationship to Organization
+
+A Project belongs to exactly one **[Organization](./organization.mdx)**. Resources shared across every project in an organization — **[LLM Service Providers](./llm-service-provider.mdx)**, **[MCP Proxies](./agent-tools.mdx)**, **[Gateways](./gateway.mdx)** — are registered at the organization level, not the project level, so any project in that organization can reference them.

@@ -25,6 +25,8 @@ Once Agent Manager is installed, you can create your first agent from the consol
 
 ## Register an Externally-Hosted Agent
 
+Use this path when your agent already runs somewhere outside WSO2 Agent Manager — locally, on your own infrastructure, or in a third-party cloud. Agent Manager doesn't build, deploy, or manage the process for an externally-hosted agent; it only provides observability (traces, metrics, logs) and governance (AgentID, RBAC, evaluation) once the agent starts reporting in.
+
 Fill in the **Agent Details** form:
 
 | Field | Description |
@@ -32,7 +34,14 @@ Fill in the **Agent Details** form:
 | **Name** | A display name for your agent (e.g., `Customer Support`) |
 | **Description** *(optional)* | A short description of what this agent does |
 
-Click **Register** to complete the registration. The agent will appear in your agent list and start receiving observability data once you instrument it using the [AMP instrumentation](../guides/amp-instrumentation.mdx) package.
+Click **Register** to complete the registration. You're taken to the agent's **Overview** page, where a **Setup Agent** panel opens automatically with a zero-code instrumentation guide for your agent's language.
+
+### What Happens After Registration
+
+- **AgentID provisioning starts immediately.** Unlike a Platform-Hosted agent, an externally-hosted agent has no deploy or promote step — AgentID credential provisioning begins for every environment in your organization as soon as you click **Register**. See [Retrieve AgentID Credentials for an Externally-Hosted Agent](../tutorials/retrieve-agentid-for-externally-hosted-agents.mdx) when you're ready to wire that credential into your agent.
+- **No traces until you instrument it.** The agent won't show any observability data until you connect it. Generate an **Agent API Key** from the Setup Agent panel (or later from the agent's Overview page) and set it, along with the OTel endpoint, as environment variables for your agent process.
+
+For the full picture of how instrumentation works for externally-hosted agents — the zero-code path (Python via the Traceloop SDK, or Ballerina), the manual `init_otel()` path for other languages and frameworks, the environment variable contract, and version compatibility — see [AMP Instrumentation](../guides/amp-instrumentation.mdx).
 
 </TabItem>
 <TabItem value="platform" label="Platform-Hosted Agent">
@@ -57,6 +66,22 @@ Provide a **Name** (e.g., `Customer Support Agent`) and an optional **Descriptio
 | **GitHub Repository** | Full URL of your repository (e.g., `https://github.com/username/repo`) |
 | **Branch** | Branch to build from (default: `main`) |
 | **Project Path** | Path within the repository where the agent code lives (default: `/`) |
+
+:::tip Don't have an agent to deploy yet?
+Use one of the ready-made [sample agents](https://github.com/wso2/agent-manager/tree/main/samples) instead of bringing your own repository. Set **GitHub Repository** to `https://github.com/wso2/agent-manager`, **Branch** to `main`, and **Project Path** to one of the sample folders below:
+
+| Sample | Project Path | Description |
+|--------|---------------|-------------|
+| Customer Support Agent | `samples/customer-support-agent` | LangGraph + FastAPI travel assistant that searches for and books flights, hotels, and car rentals |
+| Hotel Booking Agent | `samples/hotel-booking-agent` | LangGraph + FastAPI assistant for hotel search, availability checks, and booking management |
+| IT Helpdesk Agent | `samples/it-helpdesk-agent` | LangGraph + FastAPI L1 IT support assistant for password resets, access requests, and ticketing |
+| CrewAI Agent | `samples/crewai-agent` | Two-agent CrewAI + FastAPI sample that shows how a multi-agent app appears as a single trace |
+| Content Writer Platform | `samples/content-writer-platform` | Multi-agent content pipeline with separate writer, reviewer, and frontend services |
+| Manual Instrumentation Agent | `samples/manual-instrumentation-agent` | Minimal agent that emits OpenTelemetry GenAI spans by hand, without the Traceloop SDK |
+| .NET Agent | `samples/dotnet-agent` | .NET port of the manual instrumentation sample, registered as an externally-hosted agent |
+
+Each sample's requirements — required API keys, environment variables, and any setup steps specific to that agent — are documented in its own `README.md` in the sample's directory. Check it before deploying so you know what to fill in at [Step 7: Set Environment Variables](#step-7-set-environment-variables-optional).
+:::
 
 #### Using a Private Repository
 
@@ -88,11 +113,15 @@ Choose how your agent receives requests:
 
 ### Step 6: Configure LLM Providers *(Optional)*
 
-Click **+ Add** to bind one or more LLM providers to this agent. LLM providers are configured separately — see [Register an LLM Service Provider](../tutorials/register-llm-service-provider.mdx).
+Click **+ Add** to bind one or more LLM providers to this agent. LLM providers are configured separately — see [Register an LLM Service Provider](../guides/register-llm-service-provider.mdx).
 
 ### Step 7: Set Environment Variables *(Optional)*
 
 Add any environment variables your agent requires at runtime. Mark sensitive values as **Secret** to store them securely.
+
+:::note Required for most agents
+This step is optional at the platform level, but most agents — including every sample above — won't start without their required environment variables (API keys, database URLs, etc.) set here.
+:::
 
 ### Step 8: Mount Files *(Optional)*
 
@@ -123,8 +152,8 @@ Click **Deploy** to build and deploy the agent.
 |----------|-------------|
 | [Observe Your First Agent](../tutorials/observe-first-agent.mdx) | Set up OpenTelemetry tracing for your agent |
 | [Register an AI Gateway](../guides/register-ai-gateway.mdx) | Connect an LLM provider via the AI gateway |
-| [Register an LLM Service Provider](../tutorials/register-llm-service-provider.mdx) | Add and configure LLM providers |
+| [Register an LLM Service Provider](../guides/register-llm-service-provider.mdx) | Add and configure LLM providers |
 | [Secure Agent Endpoints with API Keys](../guides/secure-agent-endpoints-with-api-keys.mdx) | Protect endpoints with API key authentication |
 | [Evaluation Monitors](../guides/evaluation-monitors.mdx) | Automate quality checks for your agents |
 | [Custom Evaluators](../guides/custom-evaluators.mdx) | Build and deploy your own evaluators |
-| [Configure Agent LLM Configuration](../tutorials/configure-agent-llm-configuration.mdx) | Bind LLM config to a specific agent |
+| [Configure Agent LLM Configuration](../guides/register-llm-service-provider.mdx#configure-an-agent-to-use-a-provider) | Bind LLM config to a specific agent |
