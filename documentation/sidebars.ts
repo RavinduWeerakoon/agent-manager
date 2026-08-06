@@ -103,6 +103,16 @@ const sidebars: SidebarsConfig = {
             'guides/amp-instrumentation',
           ],
         },
+        {
+          type: 'category',
+          label: 'Agent Identity and Access Management',
+          collapsed: false,
+          items: [
+            'guides/authorize-agent-access-to-mcp-tools',
+            'guides/use-agentid-in-platform-hosted-agents',
+            'guides/retrieve-agentid-for-externally-hosted-agents',
+          ],
+        },
       ],
     },
     {
@@ -111,25 +121,8 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'tutorials/create-your-first-agent',
-        {
-          type: 'category',
-          label: 'Add Evaluation and Monitoring to an Agent',
-          collapsed: false,
-          items: [
-            'tutorials/observe-first-agent',
-          ],
-        },
+        'tutorials/observe-first-agent',
         'tutorials/roll-out-agent-version',
-        {
-          type: 'category',
-          label: 'Agent Identity and Access Management',
-          collapsed: false,
-          items: [
-            'tutorials/authorize-agent-access-to-mcp-tools',
-            'tutorials/use-agentid-in-platform-hosted-agents',
-            'tutorials/retrieve-agentid-for-externally-hosted-agents',
-          ],
-        },
       ],
     },
     {
@@ -156,7 +149,6 @@ const sidebars: SidebarsConfig = {
         },
         'reference/mcp-server',
         'reference/observer-mcp-server',
-        'reference/configuration-schemas',
         'reference/helm-charts',
         'reference/authorization',
       ],

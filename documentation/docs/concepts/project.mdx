@@ -8,9 +8,11 @@ A Project is the primary container for your agents in WSO2 Agent Manager — you
 
 ## Built on OpenChoreo's Project Abstraction
 
-An Agent Manager Project is an [OpenChoreo Project](https://openchoreo.dev/docs/concepts/developer-abstractions/). In OpenChoreo's own terms, a Project "represents a bounded context in Domain-Driven Design terms — a cohesive collection of components that together implement a specific business capability or application domain." It serves as the primary organizational unit for developers, establishing both a logical grouping of related components and physical boundaries: dedicated namespaces, network boundaries, and security policies.
+An Agent Manager Project is an [OpenChoreo Project](https://openchoreo.dev/docs/concepts/developer-abstractions/#project). In OpenChoreo's own terms, a Project "represents a bounded context in Domain-Driven Design terms — a cohesive collection of components that together implement a specific business capability or application domain." It serves as the primary organizational unit for developers, establishing both a logical grouping of related components and physical boundaries: dedicated namespaces, network boundaries, and security policies.
 
-In Agent Manager, the "components" OpenChoreo's Project groups together are your agents — each agent you create in a project becomes one of that project's underlying OpenChoreo components once it's built and deployed.
+In OpenChoreo, a **Component** is a deployable unit of software — the actual thing that gets built and run, as opposed to the Project, which just groups components together. In Agent Manager, this mapping only applies to **[Platform-Hosted agents](./internal-and-external-agent.mdx)**: when you create one, Agent Manager first records it as an agent in its own database, then, once you trigger a build and deploy, that agent is provisioned as an OpenChoreo Component (of the `agent-api` component type) inside the project's namespace. Before that first build/deploy, the agent exists only as an Agent Manager record — there's no OpenChoreo Component yet.
+
+**[Externally-Hosted agents](./internal-and-external-agent.mdx) never become an OpenChoreo Component at all.** Agent Manager doesn't build or deploy them, so there's nothing to provision on the OpenChoreo side — registering one only creates the Agent Manager record used for observability and governance.
 
 ## What a Project Holds
 

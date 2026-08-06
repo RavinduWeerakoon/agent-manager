@@ -8,11 +8,7 @@ An Organization is the top-level tenant boundary in WSO2 Agent Manager — every
 
 ## Not an Agent Manager Invention
 
-Organizations aren't something Agent Manager owns or invents: they're managed by [OpenChoreo](https://openchoreo.dev), the platform Agent Manager is built on. Agent Manager is a control plane layered on top of OpenChoreo, so when you create an organization, you're creating the same organization OpenChoreo itself would recognize. Agent Manager keeps a local mapping of each organization's name to a stable UUID purely because OpenChoreo doesn't expose organization UUIDs on its own — that mapping is bookkeeping, not a separate identity system.
-
-## What Belongs to an Organization
-
-Everything else in Agent Manager's data model is scoped underneath an organization:
+Organizations aren't something Agent Manager owns or invents: they're managed by [OpenChoreo](https://openchoreo.dev), the platform Agent Manager is built on. Agent Manager is a control plane layered on top of OpenChoreo, so when you create an organization, you're creating the same organization OpenChoreo itself would recognize.
 
 - **[Projects](./project.mdx)**, which in turn hold agents
 - Org-wide resources shared across every project — **[LLM Service Providers](./llm-service-provider.mdx)** and **[MCP Proxies](./agent-tools.mdx)**

@@ -38,7 +38,7 @@ Click **Register** to complete the registration. You're taken to the agent's **O
 
 ### What Happens After Registration
 
-- **AgentID provisioning starts immediately.** Unlike a Platform-Hosted agent, an externally-hosted agent has no deploy or promote step — AgentID credential provisioning begins for every environment in your organization as soon as you click **Register**. See [Retrieve AgentID Credentials for an Externally-Hosted Agent](../tutorials/retrieve-agentid-for-externally-hosted-agents.mdx) when you're ready to wire that credential into your agent.
+- **AgentID provisioning starts immediately.** Unlike a Platform-Hosted agent, an externally-hosted agent has no deploy or promote step — AgentID credential provisioning begins for every environment in your organization as soon as you click **Register**. See [Retrieve AgentID Credentials for an Externally-Hosted Agent](../guides/retrieve-agentid-for-externally-hosted-agents.mdx) when you're ready to wire that credential into your agent.
 - **No traces until you instrument it.** The agent won't show any observability data until you connect it. Generate an **Agent API Key** from the Setup Agent panel (or later from the agent's Overview page) and set it, along with the OTel endpoint, as environment variables for your agent process.
 
 For the full picture of how instrumentation works for externally-hosted agents — the zero-code path (Python via the Traceloop SDK, or Ballerina), the manual `init_otel()` path for other languages and frameworks, the environment variable contract, and version compatibility — see [AMP Instrumentation](../guides/amp-instrumentation.mdx).
@@ -150,7 +150,7 @@ Click **Deploy** to build and deploy the agent.
 
 | Tutorial | Description |
 |----------|-------------|
-| [Observe Your First Agent](../tutorials/observe-first-agent.mdx) | Set up OpenTelemetry tracing for your agent |
+| [Monitoring an Agent](../tutorials/observe-first-agent.mdx) | Set up OpenTelemetry tracing for your agent |
 | [Register an AI Gateway](../guides/register-ai-gateway.mdx) | Connect an LLM provider via the AI gateway |
 | [Register an LLM Service Provider](../guides/register-llm-service-provider.mdx) | Add and configure LLM providers |
 | [Secure Agent Endpoints with API Keys](../guides/secure-agent-endpoints-with-api-keys.mdx) | Protect endpoints with API key authentication |
