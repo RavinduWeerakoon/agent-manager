@@ -105,9 +105,7 @@ export function BasicInfoSection({ span, evaluatorScores }: BasicInfoSectionProp
   };
 
   const statusMessage = span.ampAttributes?.status?.message;
-  // For guardrail failures the status message wraps a payload whose actionReason
-  // is the human-readable cause (e.g. "Violation of applied content length
-  // constraints detected."). Surface it as the error chip label when present.
+  // Surface action reason as the error chip label when present.
   const actionReason = statusMessage
     ? extractActionReason(statusMessage)
     : undefined;

@@ -460,9 +460,7 @@ func extractAgentSystemPrompt(attrs map[string]interface{}) string {
 	return ""
 }
 
-// extractSpanStatus determines the error status of a span. statusMessage is the
-// developer-facing message from the span's OTel status (OpenChoreo 1.2.0+); it is
-// carried through verbatim so the console can surface it (typically set on error).
+// statusMessage is the developer-facing message from the span's OTel status
 func extractSpanStatus(attrs map[string]interface{}, spanStatus, statusMessage string) *SpanStatus {
 	status := &SpanStatus{
 		Error:   false,

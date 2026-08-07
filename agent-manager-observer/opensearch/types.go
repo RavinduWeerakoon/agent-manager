@@ -52,7 +52,7 @@ type Span struct {
 	DurationInNanos int64                  `json:"durationInNanos"` // in nanoseconds
 	Kind            string                 `json:"kind,omitempty"`
 	Status          string                 `json:"status,omitempty"`        // OTel status code: "ok", "error", "unset"
-	StatusMessage   string                 `json:"statusMessage,omitempty"` // Developer-facing status description (OpenChoreo 1.2.0+), typically set on error
+	StatusMessage   string                 `json:"statusMessage,omitempty"`
 	Attributes      map[string]interface{} `json:"attributes,omitempty"`
 	Resource        map[string]interface{} `json:"resource,omitempty"`
 	AmpAttributes   *AmpAttributes         `json:"ampAttributes,omitempty"` // Custom AMP-specific attributes
@@ -119,7 +119,7 @@ type CrewAITaskData struct {
 type SpanStatus struct {
 	Error     bool   `json:"error"`               // Whether the span has an error
 	ErrorType string `json:"errorType,omitempty"` // Error type from error.type attribute (only if error is true)
-	Message   string `json:"message,omitempty"`   // Developer-facing status message from the span's OTel status (OpenChoreo 1.2.0+), typically set on error
+	Message   string `json:"message,omitempty"` 
 }
 
 // LLMTokenUsage represents token usage for a single LLM span
