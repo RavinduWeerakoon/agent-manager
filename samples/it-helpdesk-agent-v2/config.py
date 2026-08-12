@@ -1,14 +1,3 @@
-"""Instance-level configuration, read from env at startup.
-
-Set ``USE_LLM_PROVIDER=true`` to route through the AM LLM provider
-(with guardrails) using ``LLM_PROVIDER_URL`` and ``LLM_PROVIDER_KEY``.
-By default (``false``), calls OpenAI directly using ``OPENAI_API_KEY``.
-
-Set ``USE_MCP=true`` to additionally load tools from an MCP proxy using
-``GITHUB_URL`` and ``GITHUB_API_KEY``. By default (``false``), only the
-in-process tools are used and the agent behaves exactly as v1.
-"""
-
 from __future__ import annotations
 
 import os

@@ -1,8 +1,3 @@
-"""Programmatic entrypoint for the IT helpdesk agent.
-
-Used as the AM build's run command: ``python main.py``.
-"""
-
 from __future__ import annotations
 
 import uvicorn
