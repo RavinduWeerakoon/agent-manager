@@ -94,6 +94,7 @@ const sidebars: SidebarsConfig = {
           label: 'Platform Administration',
           collapsed: true,
           items: [
+            'guides/create-an-agent',
             'guides/register-ai-gateway',
             {
               type: 'doc',
@@ -130,11 +131,10 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'tutorials/create-your-first-agent',
-        {
-          type: 'doc',
-          id: 'tutorials/observe-first-agent',
-          label: 'Monitoring an Agent',
-        },
+        'tutorials/govern-the-model',
+        'tutorials/controlling-what-agents-can-access',
+        'tutorials/observe-first-agent',
+        'tutorials/roll-out-agent-version',
       ],
     },
     {

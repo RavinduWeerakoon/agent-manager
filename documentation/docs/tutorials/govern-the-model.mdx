@@ -1,0 +1,181 @@
+---
+title: 2. Govern the Model
+---
+
+# Govern the Model Without Touching the Agent
+
+*Chapter 2 of 5 — continues from [Deploy the IT Helpdesk Agent](./create-your-first-agent.mdx).*
+
+Your helpdesk agent works. Then Security reviews it and files two objections:
+
+1. Employees have discovered it will happily write poetry and debug their personal
+   side projects. It should refuse anything that isn't IT support.
+2. Nobody can see what it's spending, and nothing stops one bad loop from burning
+   the month's token budget.
+
+The obvious fix is to edit the system prompt and redeploy. You can't — the sample
+lives in a repository you don't control, and in a real organization the agent team
+and the security team aren't the same people anyway.
+
+Everything in this chapter happens **outside the agent**. Its code never changes.
+
+## The Shape of the Fix
+
+Right now the agent holds an OpenAI key and calls OpenAI directly. You're going to
+put a [gateway](../concepts/gateway.mdx) in the middle:
+
+```text
+before:  agent ──── OPENAI_API_KEY ────► api.openai.com
+after:   agent ──► AI Gateway ──► api.openai.com
+                   (guardrails, rate limits, one central credential)
+```
+
+The agent stops holding the upstream credential entirely. It gets a
+platform-issued key and a gateway URL instead, and because every request now
+passes through one place, that place can enforce things.
+[LLM Service Provider](../concepts/llm-service-provider.mdx) explains why this
+indirection exists.
+
+## Step 1: Register an AI Gateway
+
+If your installation already has a gateway registered for your development
+environment, skip to Step 2 — most do after install.
+
+Otherwise go to **Gateways** at the organization level and register one, following
+[Register an AI Gateway](../guides/register-ai-gateway.mdx). Register it as
+`EGRESS` or `BOTH`: outbound LLM traffic is hosted on egress-capable gateways, and
+that role is fixed once set.
+
+{/* SCREENSHOT: Gateways list at org level showing a registered gateway with its functionality type */}
+
+## Step 2: Register OpenAI as an LLM Service Provider
+
+Providers are organization-level, so this is one registration every project can
+use. Go to **LLM Service Providers** under **Resources** and click
+**+ Add Service Provider**.
+
+| Field | Value |
+|---|---|
+| **Name** | `Shared OpenAI` |
+| **Version** | `v1.0` |
+| **Context path** | `/openai` |
+| **Provider Template** | **OpenAI** |
+
+Picking the template fills in the upstream URL, auth type, and API specification
+for you. Then supply your OpenAI key as the **upstream credential** and click
+**Add provider**.
+
+{/* SCREENSHOT: Add Service Provider form with the OpenAI template selected and context path /openai */}
+
+That key is now stored once, centrally. This is the payoff: when it rotates, you
+edit it here and every agent using this provider picks it up — no redeployments,
+and no agent ever held it.
+
+On the **Overview** tab, select your AI Gateway and **Generate API Key**. The
+invoke URL shown is what agents will call. Full field reference:
+[Register an LLM Service Provider](../guides/register-llm-service-provider.mdx).
+
+## Step 3: Add the Guardrail
+
+Open the provider's **Guardrails** tab and click **+ Add Guardrail** under
+**Global Guardrails**.
+
+{/* SCREENSHOT: Guardrails tab with the policy picker open, showing available policies */}
+
+The list you see is not fixed by Agent Manager — the available policies are
+reported by the gateways in your organization, each with its own parameters. The
+gateway enforces them, so the gateway determines the menu.
+
+Add a **Prompt Decorator** policy and give it an instruction along these lines:
+
+```text
+You handle IT support requests for AcmeCorp employees only: passwords, software
+access, tickets, outages, and IT policy. If a request is not IT support, politely
+decline and suggest the employee contact the relevant team. Never write code,
+essays, or creative content.
+```
+
+Save it.
+
+Guardrails stack in three layers — global on the provider (what you just did),
+per-operation on the provider, and per-agent on the binding you'll create in
+Step 4. The agent-level ones apply *in addition to* these, so one team can be
+stricter without imposing that on everyone.
+
+## Step 4: Point the Agent at the Provider
+
+Go back to your `it-helpdesk` agent, open its **LLM Configuration**, and click
+**+ Add** to attach `Shared OpenAI`.
+
+{/* SCREENSHOT: Agent LLM Configuration panel with the provider side panel open */}
+
+Attaching per environment is the point here: development can use a cheap model
+and production a stronger one, with no change to the agent.
+
+Now flip the agent over to using it. In **Environment Variables**, add:
+
+| Key | Value |
+|---|---|
+| `USE_LLM_PROVIDER` | `true` |
+
+You do **not** add `LLM_PROVIDER_URL` or `LLM_PROVIDER_KEY`. Agent Manager injects
+those as system-managed variables when the provider is attached — they're
+read-only in the console, so the agent can't be repointed at an ungoverned
+endpoint by editing its config. The sample's `config.py` reads exactly this pair.
+
+You can now delete `OPENAI_API_KEY` from the agent. It doesn't need it any more.
+
+Redeploy.
+
+## Step 5: Prove the Guardrail Works
+
+In **Try It**, ask something off-topic:
+
+```text
+Write me a haiku about Kubernetes.
+```
+
+It should decline and steer you back to IT support. Then confirm you haven't
+broken the real job:
+
+```text
+I need my password reset. alice.chen@acmecorp.com, E-1001.
+```
+
+{/* SCREENSHOT: Try It console showing the refused off-topic request next to a successful password reset */}
+
+The agent's code, prompt, and tools are byte-for-byte what they were in Chapter 1.
+The behavior changed because the request path changed.
+
+## Step 6: Add Rate Limiting
+
+Open the provider's **Rate Limiting** tab.
+
+{/* SCREENSHOT: Rate Limiting tab showing provider-wide request and token count limits */}
+
+Set a **Provider-wide** limit — a request-per-window ceiling and a token-per-window
+ceiling. Start deliberately low, something you can hit in testing, then send
+several messages in quick succession until you're throttled.
+
+Limits apply at two scopes: provider level (everything through this provider) and
+consumer level (per calling agent). Provider-wide protects the upstream API and
+your bill; per-consumer stops one agent starving the others.
+
+## What You've Built
+
+Off-topic requests refused, spending capped, and one central credential — none of
+which required touching the agent.
+
+The division of labor here is the real lesson, and it maps onto
+[roles](../concepts/organization.mdx#access-control): an **AI Lead** owns
+providers and guardrails, a **Developer** owns the agent, and neither has to wait
+on the other. A Developer can *connect* to a provider but not register or change
+one.
+
+## What's Next
+
+The agent is governed, but it only knows about AcmeCorp's mock data. Employees
+keep asking it for access to source code repositories — something it can't do,
+because it has no tools that reach outside itself.
+
+**[Chapter 3: Give the Agent Real Tools, Then Fence Them In →](./controlling-what-agents-can-access.mdx)**

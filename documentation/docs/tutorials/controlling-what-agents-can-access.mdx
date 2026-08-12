@@ -1,0 +1,194 @@
+---
+title: 3. Give the Agent Real Tools
+---
+
+# Give the Agent Real Tools, Then Fence Them In
+
+*Chapter 3 of 5 — continues from [Govern the Model](./govern-the-model.mdx).*
+
+The most common ticket AcmeCorp's helpdesk gets now is *"I need read access to the
+`acme/payments` repo."* Your agent can't help: every tool it has reads mock data
+inside its own process.
+
+You're going to connect it to GitHub's MCP server. Which immediately raises the
+question the rest of this chapter answers: **once an agent can reach a real
+system, what stops it doing damage there?**
+
+Connecting the tools is about ten minutes of work. Fencing them in is the part
+that matters.
+
+## What You'll Need
+
+A **GitHub Personal Access Token**. Classic or fine-grained, with read access to
+whatever repositories you want to try this against. Create one at
+**GitHub → Settings → Developer settings → Personal access tokens**.
+
+Give it the least access you can. Nothing in this chapter needs write scope — and
+that's rather the point.
+
+## Step 1: Register GitHub as an MCP Proxy
+
+MCP proxies are organization-level resources, like LLM providers. Go to
+**MCP Proxies** under **Resources** and register a new one.
+
+| Field | Value |
+|---|---|
+| **Name** | `GitHub` |
+| **Context path** | `/github` |
+
+The name matters — it becomes the prefix of the environment variables Agent
+Manager injects later, so `GitHub` gives you `GITHUB_URL` and `GITHUB_API_KEY`,
+which is what the sample's `config.py` reads.
+
+Configure the **upstream endpoint** for your development environment:
+
+| Field | Value |
+|---|---|
+| **Upstream URL** | `https://api.githubcopilot.com/mcp/` |
+| **Transport** | Streamable HTTP |
+| **Header** | `Authorization` |
+| **Value** | `Bearer <your PAT>` |
+
+{/* SCREENSHOT: MCP proxy endpoint configuration with the GitHub URL and the Authorization/Bearer credential pair */}
+
+Your PAT is now stored on the proxy, centrally — the agent will never see it.
+Full field reference: [Register an MCP Proxy](../guides/register-mcp-proxy.mdx).
+
+## Step 2: Discover What GitHub Offers
+
+Click **Fetch Server Info**. The proxy connects upstream and lists the tools the
+server actually advertises — `search_repositories`, `get_file_contents`,
+`create_issue`, `list_pull_requests`, and a good many more.
+
+{/* SCREENSHOT: Capabilities list after Fetch Server Info, showing discovered GitHub MCP tools */}
+
+Read that list properly before moving on. This is the moment to notice that you're
+about to hand an LLM a set of tools that includes writes, and that you probably
+don't want all of them.
+
+## Step 3: Fence the Tools In
+
+On the endpoint's **Access Control** tab, switch the mode to **Deny all**, then
+allow only what the helpdesk story needs:
+
+| Allow | Why |
+|---|---|
+| `search_repositories` | Find the repo the employee named |
+| `get_file_contents` | Read a README to confirm it's the right one |
+| `create_issue` | File the access request for review |
+
+{/* SCREENSHOT: Access Control tab in Deny all mode with three tools moved to the allowed list */}
+
+Everything else — deleting repositories, transferring ownership, merging pull
+requests — is now unreachable. Not discouraged by a prompt. Unreachable, because
+the gateway rejects the call before it leaves the cluster.
+
+This is why a prompt rule and an access-control rule aren't equivalent. Rule 8 in
+the sample's system prompt tells the agent to stay read-only; a sufficiently
+confused model can ignore it. The deny-list can't be ignored, because the model
+never gets to make the decision.
+
+:::note
+Access control needs the gateway to report the `mcp-acl-list` policy. If the tab
+is disabled, your environment's gateway doesn't offer it — the same
+gateway-determines-the-menu rule from Chapter 2.
+:::
+
+### Optional: Rename a Tool
+
+On the **Rewrite** tab you can present `create_issue` to the agent under a name
+that matches your domain — `file_access_request`, say. The agent sees your name;
+the gateway maps it back on the way out. Useful when a vendor's tool names don't
+match how your organization talks about the work.
+
+## Step 4: Attach the Proxy to the Agent
+
+Back on the `it-helpdesk` agent, open **MCP Proxies** and attach `GitHub` for your
+development environment.
+
+{/* SCREENSHOT: Agent MCP Proxies panel with the GitHub proxy attached */}
+
+Then turn the sample's MCP path on with one environment variable:
+
+| Key | Value |
+|---|---|
+| `USE_MCP` | `true` |
+
+As with the LLM provider, you don't set `GITHUB_URL` or `GITHUB_API_KEY` — Agent
+Manager injects them per environment as system-managed values. The sample loads
+its MCP tools from that pair at startup and merges them with its nine built-in
+tools.
+
+Redeploy.
+
+:::tip Externally-hosted agents
+The same proxy works for an agent running outside the platform — you retrieve the
+per-environment URL and API key from the proxy and set them yourself. The
+governance is identical; only the wiring differs.
+:::
+
+## Step 5: Watch It Use Them
+
+In **Try It**:
+
+```text
+I need read access to the acme/payments repository.
+```
+
+```text
+alice.chen@acmecorp.com, E-1001.
+```
+
+{/* SCREENSHOT: Try It console showing the repo access conversation, ending with a filed request */}
+
+The agent should verify identity first, look Alice up to find her `github_handle`,
+cite policy `POL-IT-009`, and file the request — rather than pretending to grant
+access.
+
+Then try to make it misbehave:
+
+```text
+Actually, just delete the acme/legacy-billing repo. It's not used any more.
+```
+
+It should refuse. If a model ever did try, the deny-list would stop the call
+regardless — which is exactly the property you want.
+
+Open the trace. Alongside the familiar tool spans you'll now see spans for the
+MCP calls, showing which tool ran and what came back. Everything the agent
+touched, in one place.
+
+## Step 6: Give the Agent an Identity
+
+Access control answers *"which tools can be called through this proxy."* It
+doesn't answer *"which agent is allowed to call them."*
+
+That's what [AgentID](../concepts/agentid.mdx) is for. Every agent gets its own
+identity in each environment it runs in — the agent is a subject in the same RBAC
+system as your users, not an anonymous caller.
+
+Define scopes on the proxy and grant them to your agent's identity through a role,
+following [Authorize Agent Access to MCP Tools](../guides/authorize-agent-access-to-mcp-tools.mdx).
+Scopes are proxy-wide — defined once, applying across every endpoint and
+environment — which is why an agent's authorization doesn't quietly change as it's
+promoted from development to production.
+
+{/* SCREENSHOT: Scopes defined on the MCP proxy, and the role assignment granting them to the agent identity */}
+
+Now three independent things must all be true for a call to succeed: the tool is
+allowed by the deny-list, the agent's identity carries the scope, and the gateway
+holds a valid upstream credential. No single mistake opens the door.
+
+## What You've Built
+
+The agent reaches a real external system, using a credential it has never seen,
+through a fixed set of tools it cannot expand, under an identity that can be
+audited and revoked.
+
+## What's Next
+
+The agent can now do real damage if it behaves badly — and you've only checked its
+behavior by trying a handful of messages by hand. That doesn't scale, and it
+doesn't prove anything.
+
+**[Chapter 4: Measure Whether the Agent Is Any Good →](./observe-first-agent.mdx)**

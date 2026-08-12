@@ -1,130 +1,197 @@
 ---
-sidebar_position: 2
+title: 1. Deploy the IT Helpdesk Agent
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
+# Deploy the IT Helpdesk Agent
 
-# Create Your First Agent
+*Chapter 1 of 5 — [the IT helpdesk series](#about-this-series).*
 
-Once Agent Manager is installed, you can create your first agent from the console.
+AcmeCorp's IT team is drowning in L1 tickets: password resets, software access
+requests, "is email down again?". You've been handed an agent that can handle
+those, and your job is to get it running somewhere real and talk to it.
 
-## Choose an Agent Type
+By the end of this chapter you'll have a running agent, a first conversation with
+it, and a trace showing exactly what it did to answer.
 
-1. Navigate to **Agents** in the left sidebar.
-2. Click **Add Agent**.
-3. Choose how you want to get started:
+## What You'll Need
 
-- **Externally-Hosted Agent** — Connect an agent already running outside the platform. WSO2 Agent Manager provides observability and governance without managing the deployment.
-- **Platform-Hosted Agent** — Deploy and manage the full agent lifecycle directly on WSO2 Agent Manager, including build, deployment, scaling, and observability.
+- Agent Manager installed and reachable — [on k3d](../guides/on-k3d.mdx) is the fastest route.
+- An OpenAI API key. In this chapter the agent calls OpenAI directly; [Chapter 2](./govern-the-model.mdx) puts a gateway in front of it.
 
----
+The agent itself is the [`it-helpdesk-agent-v2` sample](https://github.com/wso2/agent-manager/tree/main/samples/it-helpdesk-agent-v2).
+You don't need to clone or modify it — Agent Manager builds it straight from the
+repository. It's a LangGraph agent on FastAPI with nine tools over mock data:
+employee lookup, identity verification, tickets, password resets, software
+access, system status, policy search, and escalation to L2.
 
-<Tabs>
-<TabItem value="external" label="Externally-Hosted Agent">
+## Step 1: Put It in a Project
 
-## Register an Externally-Hosted Agent
+Agents live inside [projects](../concepts/project.mdx), and a project is what a
+[deployment pipeline](../concepts/deployment-pipeline.mdx) attaches to. So this
+isn't just a folder — it decides the promotion path everything inside it will
+follow later, in [Chapter 5](./roll-out-agent-version.mdx).
 
-Fill in the **Agent Details** form:
+1. Open the Agent Manager Console.
+2. Click the **project switcher** in the top navigation.
+3. Click **+ Create a Project**, name it `it-support`, and click **Create**.
 
-| Field | Description |
-|-------|-------------|
-| **Name** | A display name for your agent (e.g., `Customer Support`) |
-| **Description** *(optional)* | A short description of what this agent does |
+{/* SCREENSHOT: Project switcher open, with the Create a Project dialog filled in as "it-support" */}
 
-Click **Register** to complete the registration. The agent will appear in your agent list and start receiving observability data once you instrument it using the [AMP instrumentation](../guides/amp-instrumentation.mdx) package.
+Group agents that work together in one project. A helpdesk agent and a future
+ticket-triage agent belong together; an unrelated sales agent does not.
 
-</TabItem>
-<TabItem value="platform" label="Platform-Hosted Agent">
+## Step 2: Create the Agent
 
-## Create a Platform-Hosted Agent
+Inside the project, click **+ Add Agent**, then **Platform-Hosted Agent** —
+Agent Manager will build and run this one for you. (The other option,
+Externally-Hosted, is for agents already running elsewhere; see
+[Internal and External Agent](../concepts/internal-and-external-agent.mdx).)
 
-### Step 1: Choose a Source Type
+Choose **Source Code** as the source type and fill in:
 
-Select how the agent source will be provided:
+| Field | Value |
+|---|---|
+| **Name** | `it-helpdesk` |
+| **GitHub Repository** | `https://github.com/wso2/agent-manager` |
+| **Branch** | `main` |
+| **Project Path** | `/samples/it-helpdesk-agent-v2` |
 
-- **Source Code** — Point to a GitHub repository containing your agent code. The platform builds and deploys it automatically.
-- **Agent Catalog** — Pick a pre-built agent kind from the Agent Catalog.
+{/* SCREENSHOT: Add Agent form, Source Code selected, repository fields filled in with the values above */}
 
-### Step 2: Fill in Agent Details
+The repository is public, so no Git Secret is needed.
 
-Provide a **Name** (e.g., `Customer Support Agent`) and an optional **Description**.
+### Build Details
 
-### Step 3: Repository Details *(Source Code only)*
+Choose **Python**, leave the start command as `python main.py`, and pick a
+language version of `3.11` or later.
 
-| Field | Description |
-|-------|-------------|
-| **GitHub Repository** | Full URL of your repository (e.g., `https://github.com/username/repo`) |
-| **Branch** | Branch to build from (default: `main`) |
-| **Project Path** | Path within the repository where the agent code lives (default: `/`) |
+Leave **Enable auto instrumentation** checked. This is what makes Step 5 work:
+Agent Manager injects an OpenTelemetry init container at build time, so the agent
+emits traces without a single line of tracing code in the sample. The full
+mechanism is in [Observability](../concepts/observability.mdx).
 
-#### Using a Private Repository
+### Agent Type
 
-If your repository is private, you need to provide a **Git Secret** that contains a GitHub Personal Access Token (PAT).
+Choose **Chat Agent**. That contract is `POST /chat` on port `8000`, taking
+`{message, session_id, context}` and returning `{response}` — which is exactly
+what the sample's `app.py` serves. Picking **Custom API Agent** here would make
+the console expect an OpenAPI spec instead.
 
-1. In the **Git Secret** dropdown, select an existing secret or click **+ Create New** to add one.
-2. When creating a new secret, provide a **Name** and paste your GitHub PAT. The token must have `repo` scope to allow the platform to clone your private repository.
-3. The secret is stored securely and reused across agents that need access to the same repository or organization.
+### Environment Variables
 
-### Step 4: Build Details *(Source Code only)*
+The sample needs one variable to start. Add it, and mark it **Secret**:
 
-Choose a build type:
+| Key | Value | Secret |
+|---|---|---|
+| `OPENAI_API_KEY` | your OpenAI key | ✅ |
 
-- **Python** — Provide a **Start Command** (default: `python main.py`) and select the **Language Version** (e.g., `3.11`). Dependencies are auto-installed from `requirements.txt`, `pyproject.toml`, or `package.json`.
-- **Docker** — Use a `Dockerfile` in the repository.
+{/* SCREENSHOT: Environment Variables section with OPENAI_API_KEY added and the Secret toggle on */}
 
-**Enable auto instrumentation** *(Python only, checked by default)*
+Two optional ones are worth setting now, because later chapters use them:
 
-Automatically injects OpenTelemetry tracing into your agent for observability with zero code changes. You can also pin the **AMP Instrumentation Version** used by the init container.
+| Key | Value | Why |
+|---|---|---|
+| `COMPANY_NAME` | `AcmeCorp` | Appears in the agent's system prompt |
+| `AGENT_VERSION` | `1.0.0` | Echoed in every response — this is how [Chapter 5](./roll-out-agent-version.mdx) makes a promotion visible |
 
-### Step 5: Select an Agent Type
+Everything else has a default. The variables you *won't* set by hand are
+`LLM_PROVIDER_URL`, `LLM_PROVIDER_KEY`, `GITHUB_URL`, and `GITHUB_API_KEY` —
+Agent Manager injects those itself in Chapters 2 and 3.
 
-Choose how your agent receives requests:
+Click **Deploy**.
 
-| Agent Type | Description |
-|------------|-------------|
-| **Chat Agent** | Standard chat interface. Exposes `POST /chat` on port `8000`. Request: `{message: string, session_id: string, context: JSON}` — Response: `{response: string}` |
-| **Custom API Agent** | Custom HTTP API. Specify your own OpenAPI specification and port configuration. |
+## Step 3: Watch It Build
 
-### Step 6: Configure LLM Providers *(Optional)*
+Building and deploying are [separate, separately-permissioned
+actions](../concepts/agent-lifecycle.mdx#life-cycle-actions), and you'll see them
+run in sequence. The build clones the repo, resolves `requirements.txt`, and
+produces an image; the deploy places that image in your development environment.
 
-Click **+ Add** to bind one or more LLM providers to this agent. LLM providers are configured separately — see [Register an LLM Service Provider](../guides/register-llm-service-provider.mdx).
+{/* SCREENSHOT: Agent overview during a build, showing build progress and the build logs panel */}
 
-### Step 7: Set Environment Variables *(Optional)*
+First builds take a few minutes. If it fails, open the build logs from the same
+panel — a missing dependency or a bad start command shows up there.
 
-Add any environment variables your agent requires at runtime. Mark sensitive values as **Secret** to store them securely.
+When it finishes, the agent's status becomes `active`. If it sits at
+`in-progress` for a while that's normal: the deployment is applied but the
+container hasn't passed its readiness probe yet, and Agent Manager deliberately
+won't report `active` until it can actually serve traffic.
 
-### Step 8: Mount Files *(Optional)*
+## Step 4: Talk to It
 
-Mount configuration files or other static files into your agent's container at runtime.
+Open the **Try It** console from the agent's page and send a message:
 
-1. Click **+ Add File Mount**.
-2. Fill in the following fields for each file:
+```text
+Hi, I forgot my password and need it reset.
+```
 
-| Field | Description |
-|-------|-------------|
-| **File Name** | A unique name to identify the file (max 253 characters) |
-| **Mount Path** | Absolute path where the file will be available inside the container (e.g., `/workspace/config/settings.yaml`) |
-| **Content** | The file content (max 1 MB) |
-| **Sensitive** | Toggle on to store the content as a secret |
+The agent should ask you to verify your identity rather than resetting anything.
+Give it a real test employee:
 
-Duplicate file names are not allowed.
+```text
+My email is alice.chen@acmecorp.com and my employee ID is E-1001.
+```
 
-Click **Deploy** to build and deploy the agent.
+{/* SCREENSHOT: Try It console showing the two-turn conversation above */}
 
-</TabItem>
-</Tabs>
+Now try an admin account in a new conversation — `david.kim@acmecorp.com`,
+`E-1004`. The agent should refuse the reset and escalate to L2 instead.
 
----
+That refusal isn't a hardcoded branch. It's the system prompt plus the
+`is_admin` flag on the employee record, and in
+[Chapter 4](./observe-first-agent.mdx) you'll write an evaluator that checks the
+agent actually obeys it every time.
 
-## What's Next?
+:::tip
+The **Try It** console keeps one `session_id` per conversation, which is why the
+agent remembers your email on the second turn. Start a new conversation to reset
+that memory.
+:::
 
-| Next step | Description |
-|----------|-------------|
-| [Observe Your First Agent](./observe-first-agent.mdx) | Set up OpenTelemetry tracing for your agent |
-| [Register an AI Gateway](../guides/register-ai-gateway.mdx) | Connect an LLM provider via the AI gateway |
-| [Register an LLM Service Provider](../guides/register-llm-service-provider.mdx) | Add and configure LLM providers |
-| [Secure Agent Endpoints with API Keys](../guides/secure-agent-endpoints-with-api-keys.mdx) | Protect endpoints with API key authentication |
-| [Evaluation Monitors](../guides/evaluation-monitors.mdx) | Automate quality checks for your agents |
-| [Custom Evaluators](../guides/custom-evaluators.mdx) | Build and deploy your own evaluators |
-| [Configure Agent LLM Configuration](../guides/configure-agent-llm-configuration.mdx) | Bind LLM config to a specific agent |
+## Step 5: Read the First Trace
+
+In the left sidebar under **Observability**, click **Traces**, and open the trace
+for your password-reset conversation.
+
+{/* SCREENSHOT: Trace detail view, root span expanded, showing LLM and tool spans nested beneath */}
+
+Read it top to bottom:
+
+- The **root span** is the whole request — end-to-end latency and the agent name.
+- **LLM spans** show the model, the token counts, and how long the call took.
+- **Tool spans** show which tool ran, with its input and output.
+
+You should see `lookup_employee` and `verify_identity` fire before any password
+tool does. That ordering *is* the identity-first rule being followed, and it's
+the exact thing Chapter 4 turns into an automated check.
+
+You wrote no tracing code to get this. The auto-instrumentation you left enabled
+in Step 2 did it.
+
+## What You've Built
+
+A platform-hosted agent, built from source, deployed to an environment, holding a
+multi-turn conversation, and fully traced.
+
+Note what you did *not* do: no Dockerfile, no CI pipeline, no registry, no
+Kubernetes manifests, no OpenTelemetry setup.
+
+## What's Next
+
+Right now the agent talks to OpenAI directly using a key you pasted in, with no
+limits and no content policy. Security will not love this.
+
+**[Chapter 2: Govern the Model Without Touching the Agent →](./govern-the-model.mdx)**
+
+## About This Series
+
+Five chapters, one agent, built up feature by feature:
+
+1. **Deploy the IT Helpdesk Agent** *(you are here)*
+2. [Govern the Model Without Touching the Agent](./govern-the-model.mdx)
+3. [Give the Agent Real Tools, Then Fence Them In](./controlling-what-agents-can-access.mdx)
+4. [Measure Whether the Agent Is Any Good](./observe-first-agent.mdx)
+5. [Ship It to Production](./roll-out-agent-version.mdx)
+
+Each chapter builds on the last. For field-by-field reference on any screen, see
+[Create an Agent](../guides/create-an-agent.mdx) and the other Guides.
