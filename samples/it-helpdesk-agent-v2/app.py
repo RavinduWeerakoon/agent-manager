@@ -1,10 +1,3 @@
-"""FastAPI entrypoint for the IT helpdesk agent.
-
-Implements the AM chat-agent contract: ``POST /chat`` on port 8000 accepting
-``{session_id, message, context}`` and returning ``{response, session_id}``.
-``GET /health`` is provided for local checks (AM does not require it).
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -24,8 +17,6 @@ log = logging.getLogger("it-helpdesk")
 
 CONFIG = Config.from_env()
 
-# MCP discovery is a network call, so it happens once at startup rather than per
-# request. No event loop is running at import time, so asyncio.run is safe here.
 MCP_TOOLS = asyncio.run(load_mcp_tools(CONFIG))
 
 AGENT = build_agent(CONFIG, MCP_TOOLS)
