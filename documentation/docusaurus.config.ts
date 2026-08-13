@@ -65,6 +65,11 @@ const config: Config = {
 
   onBrokenLinks: 'throw',
 
+  // Keep the site out of search engines. Emits
+  // <meta name="robots" content="noindex, nofollow"> on every page.
+  // Paired with sitemap: false below and static/robots.txt.
+  noIndex: true,
+
   customFields: {
     latestVersion,
   },
@@ -147,6 +152,8 @@ const config: Config = {
             'https://github.com/wso2/agent-manager/edit/main/documentation/',
         },
         blog: false, // Disable blog until we have content
+        // No sitemap: the site is deliberately not indexed (see noIndex above).
+        sitemap: false,
         theme: {
           customCss: './src/css/custom.css',
         },
