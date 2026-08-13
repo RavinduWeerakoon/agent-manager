@@ -1,8 +1,8 @@
 ---
-title: 4. Measure the Agent
+title: Measure the Agent
 ---
 
-# Measure Whether the Agent Is Any Good
+# Measure Whether the Agent Is doing good
 
 *Chapter 4 of 5 — continues from [Give the Agent Real Tools](./controlling-what-agents-can-access.mdx).*
 
@@ -28,10 +28,11 @@ cd agent-manager/samples/it-helpdesk-agent-v2
 python scripts/seed_traffic.py --url <your-agent-endpoint>
 ```
 
-It runs eleven scripted conversations — password resets that should succeed,
+It runs twelve scripted conversations — password resets that should succeed,
 admin resets that should be refused, a privacy probe, an ineligible software
-request, a repo access request. The mix is deliberate: an evaluator that only ever
-sees happy paths proves nothing.
+request, a known-issue lookup, and a request to close an issue that should be
+refused. The mix is deliberate: an evaluator that only ever sees happy paths
+proves nothing.
 
 Add `--api-key` if you secured the endpoint. Each conversation runs on its own
 session, so multi-turn flows behave like real users.
@@ -121,15 +122,16 @@ This pairing is the useful bit. A score tells you *that* the agent failed; the
 spans below it tell you *why* — which tool ran, in what order, what the model got
 back. Debugging a bad score is reading downward from it.
 
-## Externally-Hosted Agents
+## Both Hosting Types, Unchanged
 
-Everything above works for an agent Agent Manager doesn't run — evaluation reads
-traces, and traces don't care where the workload lives.
+This is the one chapter where the two paths converge completely. Evaluation reads
+traces, and a trace doesn't record who ran the workload — so monitors, built-in
+evaluators, custom evaluators, and continuous scheduling all behave identically.
 
-The one difference is upstream: an externally-hosted agent has no init container
-to inject instrumentation, so you connect it yourself with the
-`amp-instrumentation` package. See [AMP Instrumentation](../guides/amp-instrumentation.mdx).
-Once traces arrive, the monitors and evaluators here are identical.
+The only difference is upstream of this chapter: an externally-hosted agent has no
+init container, so its traces arrive via the `amp-instrument` prefix you set up in
+[Chapter 1](./create-your-first-agent.mdx). If no traces are showing, that's the
+thing to check — see [AMP Instrumentation](../guides/amp-instrumentation.mdx).
 
 ## What You've Built
 

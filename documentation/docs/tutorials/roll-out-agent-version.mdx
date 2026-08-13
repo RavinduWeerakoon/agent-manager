@@ -1,5 +1,5 @@
 ---
-title: 5. Ship It to Production
+title: Ship It to Production
 ---
 
 # Ship It to Production
@@ -8,6 +8,14 @@ title: 5. Ship It to Production
 
 The helpdesk agent works in development, it's governed, it has real tools it can't
 abuse, and monitors that prove it behaves. Now it has to serve actual employees.
+
+:::info This chapter needs a platform-hosted agent
+Promotion, rollback, suspend, endpoint security, and isolation tiers are all
+things Agent Manager can only do for a workload it runs. If your agent is
+externally-hosted, follow along to understand the model — but the actions
+themselves won't be available to you, and the deployment and endpoint security
+stay your responsibility. Only [Step 7](#step-7-watch-it) applies to both.
+:::
 
 Production is not "development with a different URL". It's a different
 environment, with different credentials, a different security posture, and — most
@@ -70,6 +78,14 @@ Pick an authentication approach for the agent's endpoint:
 If a browser app will call the agent directly, configure
 [CORS](../guides/configure-cors-for-agent-endpoints.mdx) — restricted to your
 actual origins, not `*`.
+
+:::info Platform-hosted only
+All three are enforced at the gateway that fronts a platform-hosted agent's
+endpoint. An externally-hosted agent's endpoint is yours, so authentication and
+CORS on it are yours to implement. What you *do* still get from the platform is
+everything on the outbound side — the LLM provider and MCP proxy governance from
+Chapters 2 and 3 — plus AgentID, traces, and evaluation.
+:::
 
 Identity providers are per environment: a token minted for staging is not accepted
 in production, even for the same agent. That isolation is the point.

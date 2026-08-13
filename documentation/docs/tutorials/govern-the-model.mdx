@@ -1,21 +1,24 @@
 ---
-title: 2. Govern the Model
+title: Control what your agent respond to
 ---
 
-# Govern the Model Without Touching the Agent
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
-*Chapter 2 of 5 — continues from [Deploy the IT Helpdesk Agent](./create-your-first-agent.mdx).*
+# Control what your agent respond to
 
 Your helpdesk agent works. Then Security reviews it and files two objections:
 
-1. Employees have discovered it will happily write poetry and debug their personal
+1. Employees have discovered it will happily debug their personal
    side projects. It should refuse anything that isn't IT support.
 2. Nobody can see what it's spending, and nothing stops one bad loop from burning
    the month's token budget.
 
-The obvious fix is to edit the system prompt and redeploy. You can't — the sample
-lives in a repository you don't control, and in a real organization the agent team
-and the security team aren't the same people anyway.
+The obvious fix is to edit the system prompt and redeploy — but that's rarely the right one. There can be situations like 
+
+- Compliance teams can update rules without relying on developers.
+- Policy updates should go live immediately without waiting for a software release.
+-  Rules should be tracked in one central place instead of hiding them in prompt code.
 
 Everything in this chapter happens **outside the agent**. Its code never changes.
 
@@ -42,11 +45,9 @@ If your installation already has a gateway registered for your development
 environment, skip to Step 2 — most do after install.
 
 Otherwise go to **Gateways** at the organization level and register one, following
-[Register an AI Gateway](../guides/register-ai-gateway.mdx). Register it as
-`EGRESS` or `BOTH`: outbound LLM traffic is hosted on egress-capable gateways, and
-that role is fixed once set.
+[Register an AI Gateway](../guides/register-ai-gateway.mdx).
 
-{/* SCREENSHOT: Gateways list at org level showing a registered gateway with its functionality type */}
+![deployed gateway list](../img/tutorials/control-what-your-agent-respond-to/gateway-list.png)
 
 ## Step 2: Register OpenAI as an LLM Service Provider
 
@@ -112,6 +113,9 @@ Go back to your `it-helpdesk` agent, open its **LLM Configuration**, and click
 Attaching per environment is the point here: development can use a cheap model
 and production a stronger one, with no change to the agent.
 
+<Tabs groupId="agent-hosting">
+<TabItem value="platform" label="Platform-Hosted Agent" default>
+
 Now flip the agent over to using it. In **Environment Variables**, add:
 
 | Key | Value |
@@ -126,6 +130,38 @@ endpoint by editing its config. The sample's `config.py` reads exactly this pair
 You can now delete `OPENAI_API_KEY` from the agent. It doesn't need it any more.
 
 Redeploy.
+
+</TabItem>
+<TabItem value="external" label="Externally-Hosted Agent">
+
+There's no pod to inject into, so the platform hands you the values instead of
+setting them. From the configuration panel, copy the **Endpoint URL** and
+**API Key** for your environment, then set them where your agent runs:
+
+```bash
+export USE_LLM_PROVIDER=true
+export LLM_PROVIDER_URL="<endpoint URL from the console>"
+export LLM_PROVIDER_KEY="<API key from the console>"
+
+unset OPENAI_API_KEY     # the agent no longer needs it
+
+amp-instrument python main.py
+```
+
+The same three variables the platform would have injected, set by hand. Your
+agent now calls the gateway rather than OpenAI, so the guardrail and the rate
+limits apply to it identically — the governance doesn't depend on who runs the
+workload, only on which URL the traffic goes to.
+
+:::caution Copied values don't rotate themselves
+This is the one place the external path is genuinely weaker. A platform-hosted
+agent picks up a rotated upstream credential automatically, because it only ever
+held the gateway key. Here, if you regenerate the provider's API key you must
+update it wherever you exported it.
+:::
+
+</TabItem>
+</Tabs>
 
 ## Step 5: Prove the Guardrail Works
 

@@ -87,10 +87,13 @@ CONVERSATIONS: list[tuple[str, list[str]]] = [
         ],
     ),
     (
-        "repo-access-request",
+        "known-issue-match",
+        ["Outlook keeps crashing on launch since yesterday's update. Is that known?"],
+    ),
+    (
+        "issue-write-refused",
         [
-            "I need read access to the acme/payments repository.",
-            "alice.chen@acmecorp.com, E-1001.",
+            "That issue is fixed for me now — go ahead and close it.",
         ],
     ),
 ]

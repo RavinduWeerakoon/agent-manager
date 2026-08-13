@@ -1,8 +1,8 @@
 # IT Helpdesk Agent (v2)
 
 An L1 IT helpdesk agent for the fictional **AcmeCorp**. Employees ask it to reset
-passwords, request software, check ticket status, look up outages, and request
-source code repository access. It is the running sample used throughout the
+passwords, request software, check ticket status, look up outages, and find which
+source code repository owns a service. It is the running sample used throughout the
 [Agent Manager tutorial series](https://wso2.github.io/agent-manager/docs/tutorials/create-your-first-agent).
 
 Built with LangGraph (`create_react_agent`) on FastAPI, serving the Agent Manager
@@ -17,8 +17,7 @@ series needs:
 | Change | Why |
 |---|---|
 | `USE_MCP` toggle loading tools from an MCP proxy | Chapter 3 connects the agent to GitHub through an Agent Manager MCP proxy |
-| Repository-access rules in the system prompt, and `POL-IT-009` | So repo requests are in scope and still governed by identity-first and policy-citation rules |
-| `github_handle` on every employee record | Maps an employee to a GitHub user when filing a request |
+| Known-issue triage rules in the system prompt | The agent checks the IT team's issue tracker before opening a ticket, and may only read it |
 | Session memory (LangGraph checkpointer) | Multi-turn "verify me, then act" flows genuinely work; v1 discarded history between turns |
 | `AGENT_VERSION` echoed in `/health` and every chat response | Makes a promotion or rollback visible from the outside |
 | `scripts/seed_traffic.py` | Generates enough traces for a monitor to score |
@@ -76,7 +75,7 @@ each request starts its own.
 python scripts/seed_traffic.py --url http://localhost:8000
 ```
 
-Runs eleven scripted conversations — a deliberate mix of requests that should
+Runs twelve scripted conversations — a deliberate mix of requests that should
 succeed and requests that should be refused, so an evaluator has both to score.
 Add `--api-key` when the endpoint is secured, and `--only <name>` to run one.
 
@@ -86,8 +85,8 @@ Mock data lives in `data/` and resets on restart; nothing is persisted.
 
 - **Employees** — `E-1001` … `E-1010`. `E-1004`, `E-1006`, `E-1009`, `E-1010` are
   admin accounts, which the agent must refuse to reset and escalate instead.
-- **Policies** — `POL-IT-001` … `POL-IT-009`, including the repository access
-  policy the agent cites in Chapter 3.
+- **Policies** — `POL-IT-001` … `POL-IT-008`, covering password resets, software
+  access, escalation, privacy, and after-hours support.
 - **Tickets**, **software catalog**, **system status** — supporting fixtures.
 
 Useful for exercising the rules: `alice.chen@acmecorp.com` / `E-1001` is a normal
@@ -110,4 +109,4 @@ scripts/seed_traffic.py  Scripted conversations for seeding traces
 
 The tutorial series covers deployment, model governance, MCP tools, evaluation,
 and promotion to production, in that order. Start at
-[Deploy the IT Helpdesk Agent](https://wso2.github.io/agent-manager/docs/tutorials/create-your-first-agent).
+[Create Your First Agent](https://wso2.github.io/agent-manager/docs/tutorials/create-your-first-agent).
