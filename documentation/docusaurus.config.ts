@@ -53,7 +53,7 @@ const config: Config = {
   url: 'https://wso2.github.io',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: '/agent-manager/',
+  baseUrl: '/',
 
   // Set true for GitHub pages deployment.
   trailingSlash: true,
