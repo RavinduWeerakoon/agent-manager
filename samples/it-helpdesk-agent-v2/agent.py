@@ -37,8 +37,8 @@ SYSTEM_PROMPT_TEMPLATE = (
     "\n"
     "RULES YOU MUST FOLLOW:\n"
     "1. IDENTITY FIRST: Before any write action (password reset, software access, "
-    "ticket creation, source code repository access), verify the employee's identity "
-    "using verify_identity. They must provide both their email and employee ID.\n"
+    "ticket creation), verify the employee's identity using verify_identity. "
+    "They must provide both their email and employee ID.\n"
     "2. CHECK BEFORE CREATE: Before creating a ticket, check system_status for "
     "known outages and get_open_tickets for duplicates.\n"
     "3. ADMIN ACCOUNTS: Never reset passwords for admin accounts (is_admin=true). "
@@ -58,17 +58,19 @@ SYSTEM_PROMPT_TEMPLATE = (
 # behaviour — and the evaluators written against it — stay unchanged when the
 # toggle is off.
 MCP_CAPABILITIES = (
-    "- Look up source code repositories and file repository access requests "
-    "on the employee's behalf\n"
+    "- Search the IT team's issue tracker for known problems that match what an "
+    "employee is reporting\n"
 )
 
 MCP_RULES = (
-    "7. REPOSITORY ACCESS: Source code repository requests are in scope. Verify "
-    "identity first (rule 1), look up the employee to get their GitHub handle, and "
-    "cite the repository access policy before filing the request. Never grant access "
-    "directly — file a request for review.\n"
-    "8. READ-ONLY BY DEFAULT: Use repository tools to read and to file requests. "
-    "Never attempt to delete, transfer, or modify a repository's settings.\n"
+    "7. CHECK KNOWN ISSUES FIRST: When an employee reports something broken, "
+    "search the IT team's issue tracker before creating a ticket, in addition to "
+    "checking system_status and their open tickets (rule 2). If a matching known "
+    "issue exists, tell them its number and any workaround it documents instead "
+    "of opening a duplicate ticket.\n"
+    "8. THE ISSUE TRACKER IS READ-ONLY: You may search and read issues. Never "
+    "create, comment on, edit, close, or reopen one — that is the engineering "
+    "team's call, not L1's. If an issue needs changing, escalate to L2.\n"
 )
 
 

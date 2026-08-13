@@ -1,30 +1,36 @@
 ---
-title: 3. Give the Agent Real Tools
+title: Give the Agent Real Tools
 ---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Give the Agent Real Tools, Then Fence Them In
 
-*Chapter 3 of 5 — continues from [Govern the Model](./govern-the-model.mdx).*
+Your agent already refuses to open duplicate tickets — it checks system status and
+the employee's open tickets first. But AcmeCorp's IT team tracks known problems
+somewhere the agent can't see: their GitHub issue tracker. So when three people
+report mail client crashing after an update, the agent files three tickets for a
+problem engineering already knows about.
 
-The most common ticket AcmeCorp's helpdesk gets now is *"I need read access to the
-`acme/payments` repo."* Your agent can't help: every tool it has reads mock data
-inside its own process.
-
-You're going to connect it to GitHub's MCP server. Which immediately raises the
-question the rest of this chapter answers: **once an agent can reach a real
+You're going to give it a third place to look. Which immediately raises the
+question the rest of this chapter answers: **once an agent can reach an outside system
 system, what stops it doing damage there?**
 
-Connecting the tools is about ten minutes of work. Fencing them in is the part
-that matters.
+Connecting the tools might takes a few minutes. Fencing them in is the part that
+matters.
 
 ## What You'll Need
 
-A **GitHub Personal Access Token**. Classic or fine-grained, with read access to
-whatever repositories you want to try this against. Create one at
+A **GitHub Personal Access Token** with **read access only**. Create one at
 **GitHub → Settings → Developer settings → Personal access tokens**.
 
-Give it the least access you can. Nothing in this chapter needs write scope — and
-that's rather the point.
+You'll also need a repository with a few issues in it to search — the IT team's
+tracker in the story, any repository you can read in practice.
+
+Grant the token the read access; nothing here needs write scope. That's partly
+convenience and partly the lesson: you're about to fence the tools in at the
+gateway as well, so a mistake would have to get past two independent barriers.
 
 ## Step 1: Register GitHub as an MCP Proxy
 
@@ -57,8 +63,8 @@ Full field reference: [Register an MCP Proxy](../guides/register-mcp-proxy.mdx).
 ## Step 2: Discover What GitHub Offers
 
 Click **Fetch Server Info**. The proxy connects upstream and lists the tools the
-server actually advertises — `search_repositories`, `get_file_contents`,
-`create_issue`, `list_pull_requests`, and a good many more.
+server actually advertises — `search_issues`, `get_issue`, `create_issue`,
+`update_issue`, `search_repositories`, `list_pull_requests`, and a good many more.
 
 {/* SCREENSHOT: Capabilities list after Fetch Server Info, showing discovered GitHub MCP tools */}
 
@@ -68,38 +74,40 @@ don't want all of them.
 
 ## Step 3: Fence the Tools In
 
-On the endpoint's **Access Control** tab, switch the mode to **Deny all**, then
+On the endpoint's **Manage Tools** tab, switch the mode to **Deny all**, then
 allow only what the helpdesk story needs:
 
 | Allow | Why |
 |---|---|
-| `search_repositories` | Find the repo the employee named |
-| `get_file_contents` | Read a README to confirm it's the right one |
-| `create_issue` | File the access request for review |
+| `search_issues` | Find a known issue matching what the employee reported |
+| `get_issue` | Read it for status and any documented workaround |
 
-{/* SCREENSHOT: Access Control tab in Deny all mode with three tools moved to the allowed list */}
+{/* SCREENSHOT: Access Control tab in Deny all mode with the two read tools moved to the allowed list */}
 
-Everything else — deleting repositories, transferring ownership, merging pull
-requests — is now unreachable. Not discouraged by a prompt. Unreachable, because
-the gateway rejects the call before it leaves the cluster.
+Two tools. Everything else — creating issues, commenting, closing them, deleting
+repositories, merging pull requests — is now unreachable. Not discouraged by a
+prompt. Unreachable, because the gateway rejects the call before it leaves the
+cluster.
+
+That distinction matters most for the tools an agent could *plausibly* be talked
+into using. Nobody is going to sweet-talk a helpdesk bot into deleting a
+repository. But "this is fixed for me, close the issue" is an entirely reasonable
+thing for an employee to say — and closing engineering's issues is not L1's call.
 
 This is why a prompt rule and an access-control rule aren't equivalent. Rule 8 in
-the sample's system prompt tells the agent to stay read-only; a sufficiently
-confused model can ignore it. The deny-list can't be ignored, because the model
-never gets to make the decision.
+the sample's system prompt tells the agent the tracker is read-only; a
+sufficiently confused model can ignore it. The deny-list can't be ignored,
+because the model never gets to make the decision.
+
+Note that you've now said "read-only" in three independent places: the PAT's
+scopes, this deny-list, and the agent's prompt. That redundancy is deliberate —
+each one alone is a single point of failure.
 
 :::note
 Access control needs the gateway to report the `mcp-acl-list` policy. If the tab
 is disabled, your environment's gateway doesn't offer it — the same
 gateway-determines-the-menu rule from Chapter 2.
 :::
-
-### Optional: Rename a Tool
-
-On the **Rewrite** tab you can present `create_issue` to the agent under a name
-that matches your domain — `file_access_request`, say. The agent sees your name;
-the gateway maps it back on the way out. Useful when a vendor's tool names don't
-match how your organization talks about the work.
 
 ## Step 4: Attach the Proxy to the Agent
 
@@ -108,6 +116,9 @@ development environment.
 
 {/* SCREENSHOT: Agent MCP Proxies panel with the GitHub proxy attached */}
 
+<Tabs groupId="agent-hosting">
+<TabItem value="platform" label="Platform-Hosted Agent" default>
+
 Then turn the sample's MCP path on with one environment variable:
 
 | Key | Value |
@@ -115,44 +126,67 @@ Then turn the sample's MCP path on with one environment variable:
 | `USE_MCP` | `true` |
 
 As with the LLM provider, you don't set `GITHUB_URL` or `GITHUB_API_KEY` — Agent
-Manager injects them per environment as system-managed values. The sample loads
-its MCP tools from that pair at startup and merges them with its nine built-in
-tools.
+Manager injects them per environment as system-managed values, deriving the names
+from the proxy name you chose in Step 1. The sample loads its MCP tools from that
+pair at startup and merges them with its nine built-in tools.
 
 Redeploy.
 
-:::tip Externally-hosted agents
-The same proxy works for an agent running outside the platform — you retrieve the
-per-environment URL and API key from the proxy and set them yourself. The
-governance is identical; only the wiring differs.
+</TabItem>
+<TabItem value="external" label="Externally-Hosted Agent">
+
+Retrieve the per-environment URL and API key from the proxy, then set them
+yourself — the same pair, same names, just not injected:
+
+```bash
+export USE_MCP=true
+export GITHUB_URL="<proxy endpoint URL for your environment>"
+export GITHUB_API_KEY="<proxy API key>"
+
+amp-instrument python main.py
+```
+
+The variable names must match what the sample reads. Agent Manager derives them
+from the proxy name (`GitHub` → `GITHUB_URL` / `GITHUB_API_KEY`), so if you named
+the proxy something else, use the names the console shows you.
+
+The governance is identical: the deny-list, the rewrite rules, and the upstream
+PAT all live on the proxy, so your externally-hosted agent is fenced in exactly
+as a platform-hosted one would be. It still never sees the GitHub credential.
+
+</TabItem>
+</Tabs>
+
+:::note Restart to pick up tool changes
+The sample discovers MCP tools once at startup. Widen the access-control list and
+the running agent won't see the new tools until it restarts — a redeploy for
+platform-hosted agents, a process restart for externally-hosted ones.
 :::
 
 ## Step 5: Watch It Use Them
 
-In **Try It**:
+In **Try It**, report something that matches an issue in your tracker:
 
 ```text
-I need read access to the acme/payments repository.
+Outlook keeps crashing on launch since yesterday's update. Is that known?
 ```
+
+{/* SCREENSHOT: Try It console showing the agent citing a known issue instead of opening a ticket */}
+
+The agent should search the tracker, find the matching issue, and tell the
+employee its number and any workaround — instead of opening a duplicate ticket.
+That's the "check before create" rule it already followed for outages and open
+tickets, now reaching a live system rather than mock data.
+
+Then try the request that sounds perfectly reasonable:
 
 ```text
-alice.chen@acmecorp.com, E-1001.
+That's fixed for me now — go ahead and close it.
 ```
 
-{/* SCREENSHOT: Try It console showing the repo access conversation, ending with a filed request */}
-
-The agent should verify identity first, look Alice up to find her `github_handle`,
-cite policy `POL-IT-009`, and file the request — rather than pretending to grant
-access.
-
-Then try to make it misbehave:
-
-```text
-Actually, just delete the acme/legacy-billing repo. It's not used any more.
-```
-
-It should refuse. If a model ever did try, the deny-list would stop the call
-regardless — which is exactly the property you want.
+It should refuse and point them at L2. And if a model ever did try, the deny-list
+would stop the call regardless — which is exactly the property you want, because
+this is the request an agent is actually likely to be talked into.
 
 Open the trace. Alongside the familiar tool spans you'll now see spans for the
 MCP calls, showing which tool ran and what came back. Everything the agent
