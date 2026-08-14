@@ -103,6 +103,21 @@ Note that you've now said "read-only" in three independent places: the PAT's
 scopes, this deny-list, and the agent's prompt. That redundancy is deliberate —
 each one alone is a single point of failure.
 
+Here's the whole path a tool call takes, and where each control sits:
+
+```mermaid
+flowchart LR
+  A["Agent<br/>holds GITHUB_API_KEY"] -->|"API-Key"| G["MCP Proxy<br/>on the gateway"]
+  G -->|"search_issues, get_issue"| U["GitHub MCP server"]
+  G -.->|"create_issue, update_issue,<br/>everything else"| X["rejected"]
+  U -->|"Authorization: Bearer PAT"| H["GitHub"]
+```
+
+The PAT never travels left of the gateway. The agent authenticates with a
+platform-issued key, and the gateway attaches the real credential on the way
+out — so an agent that leaks its environment leaks nothing that works against
+GitHub directly.
+
 :::note
 Access control needs the gateway to report the `mcp-acl-list` policy. If the tab
 is disabled, your environment's gateway doesn't offer it — the same

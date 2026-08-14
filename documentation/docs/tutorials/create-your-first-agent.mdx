@@ -35,11 +35,10 @@ creation time — see [Internal and External Agent](../concepts/internal-and-ext
 | | **Platform-Hosted** | **Externally-Hosted** |
 |---|---|---|
 | Who builds and runs it | Agent Manager, from your repository | You, wherever you like |
-| Configuration | Injected as environment variables | You wire it in yourself |
 | Tracing | Automatic, no code changes | Requires the `amp-instrumentation` package |
 
 If you're new here, pick Platform-Hosted. Most of the series works either
-way, but building, deploying, promoting, rolling back, and endpoint security are
+way, but building, deploying, promoting, rolling back, and endpoint securitcleay are
 things the platform can only do for a workload it runs. Those steps are marked
 where they appear.
 
@@ -85,7 +84,6 @@ The sample needs one variable to start. Add it, and mark it **Secret**:
 |---|---|---|
 | `OPENAI_API_KEY` | your OpenAI key | ✅ |
 
-{/* SCREENSHOT: Environment Variables section with OPENAI_API_KEY added and the Secret toggle on */}
 
 Two optional ones are worth setting now, because later chapters use them:
 
@@ -154,30 +152,28 @@ you register — not on first deployment.
 </TabItem>
 </Tabs>
 
-## Step 3: Build process of the platform hosted agent
+## Step 2: Build process of the platform hosted agent
 
 :::info Platform-hosted only
 Building is something Agent Manager does to source it fetched itself. If you
 registered an externally-hosted agent, your process is already running — skip to
 Step 4.
 :::
+After the pressing the deploy button you will be redirected to the build page and the build process of the agent will start showing the build status as running. 
 
 Building and deploying are [separately-permissioned
 actions](../concepts/agent-lifecycle.mdx#life-cycle-actions), and you'll see them
 run in sequence. The build clones the repo, resolves `requirements.txt`, and
 produces an image. The deploy places that image in your development environment.
 
-{/* SCREENSHOT: Agent overview during a build, showing build progress and the build logs panel */}
-
-First builds take a few minutes. If it fails, open the build logs from the same
+First builds take a few minutes. If it fails, open the build logs from the details button in same
 panel — a missing dependency or a bad start command shows up there.
 
-When it finishes, the agent's status becomes `active`. If it sits at
-`in-progress` for a while that's normal. It means the deployment is applied but the
-container hasn't passed its readiness probe yet, and Agent Manager deliberately
-won't report `active` until it can actually serve traffic.
+When it finishes, the agent's build  status will become active. Since you have selected agent deployment in one go as well to see the deployment status of the agent go to the Deploy tab you will see the Deployment status of the default enviroment
 
-## Step 4: Talk to It
+In the deployment page you can do other deployment configurations to your agetn as well
+
+## Step 3: Talk to Your agent
 
 <Tabs groupId="agent-hosting">
 <TabItem value="platform" label="Platform-Hosted Agent" default>
@@ -243,24 +239,23 @@ agent actually obeys it every time.
 </TabItem>
 </Tabs>
 
-## Step 5: Read the First Trace
+## Step 4: Read the First Trace
 
 In the left sidebar under **Observability**, click **Traces**, and open the trace
-for your password-reset conversation.
+for your password-reset conversation. You can find the trace by observing the trace output. 
 
-{/* SCREENSHOT: Trace detail view, root span expanded, showing LLM and tool spans nested beneath */}
 
 Read it top to bottom:
 
-- The **root span** is the whole request — end-to-end latency and the agent name.
-- **LLM spans** show the model, the token counts, and how long the call took.
+- The **root span** is the whole request which provides the details about end to end latency and the success/failiure of the request.
+- **LLM spans** show the model, the token counts, and how long the call took. you can identiy LLM spans by the LLM chip
 - **Tool spans** show which tool ran, with its input and output.
 
-You should see `lookup_employee` and `verify_identity` fire before any password
+You should see `verify_identity` tool fire before any password
 tool does. That ordering *is* the identity-first rule being followed, and it's
 the exact thing Chapter 4 turns into an automated check.
 
-Traces look the same whichever path you took — what differs is only how the
+Traces look the same whichever path you took (platform hosted or external) — what differs is only how the
 instrumentation got there. Platform-hosted agents got it from the init container
 you left enabled in Step 2; externally-hosted agents got it from the
 `amp-instrument` prefix. Neither required editing the agent's code.
@@ -270,14 +265,11 @@ you left enabled in Step 2; externally-hosted agents got it from the
 An agent registered in a project, holding a multi-turn conversation, and fully
 traced.
 
-If you went platform-hosted, note what you did *not* do: no Dockerfile, no CI
-pipeline, no registry, no Kubernetes manifests, no OpenTelemetry setup. If you
+If you went platform-hosted, note what you did *not* have to do do: no Dockerfile, no CI
+pipeline, no registry, no Kubernetes manifests, no OpenTelemetry setup, the whole agent deployment process was taken care by the Agent Manager Platform. If you
 went externally-hosted, you kept your own runtime and still got the traces.
 
 ## What's Next
 
-Right now the agent talks to OpenAI directly using a key you pasted in, with no
-limits and no content policy. Security will not love this.
-
-**[Chapter 2: Govern the Model Without Touching the Agent →](./govern-the-model.mdx)**
+Right now, the agent communicates directly with OpenAI using the key you provided, without any limits or content policies. This gives you less control over how the agent responds
 

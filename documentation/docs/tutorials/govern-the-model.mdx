@@ -7,7 +7,7 @@ import TabItem from '@theme/TabItem';
 
 # Control what your agent respond to
 
-Your helpdesk agent works. Then Security reviews it and files two objections:
+Your helpdesk agent works. Then security team reviews it and files two objections:
 
 1. Employees have discovered it will happily debug their personal
    side projects. It should refuse anything that isn't IT support.
@@ -16,9 +16,9 @@ Your helpdesk agent works. Then Security reviews it and files two objections:
 
 The obvious fix is to edit the system prompt and redeploy — but that's rarely the right one. There can be situations like 
 
-- Compliance teams can update rules without relying on developers.
+- Compliance teams might want update rules without relying on developers.
 - Policy updates should go live immediately without waiting for a software release.
--  Rules should be tracked in one central place instead of hiding them in prompt code.
+- Rules should be tracked in one central place instead of hiding them in prompt code.
 
 Everything in this chapter happens **outside the agent**. Its code never changes.
 
@@ -27,10 +27,19 @@ Everything in this chapter happens **outside the agent**. Its code never changes
 Right now the agent holds an OpenAI key and calls OpenAI directly. You're going to
 put a [gateway](../concepts/gateway.mdx) in the middle:
 
-```text
-before:  agent ──── OPENAI_API_KEY ────► api.openai.com
-after:   agent ──► AI Gateway ──► api.openai.com
-                   (guardrails, rate limits, one central credential)
+```mermaid
+flowchart LR
+  subgraph Before
+    direction LR
+    A1["Agent<br/>holds OPENAI_API_KEY"] --> O1["api.openai.com"]
+  end
+
+  subgraph After
+    direction LR
+    A2["Agent<br/>holds a gateway key"] --> G["AI Gateway<br/>guardrails · rate limits"]
+    G --> O2["api.openai.com"]
+    P["LLM Service Provider<br/>holds OPENAI_API_KEY"] -.-> G
+  end
 ```
 
 The agent stops holding the upstream credential entirely. It gets a
@@ -39,20 +48,14 @@ passes through one place, that place can enforce things.
 [LLM Service Provider](../concepts/llm-service-provider.mdx) explains why this
 indirection exists.
 
-## Step 1: Register an AI Gateway
 
-If your installation already has a gateway registered for your development
-environment, skip to Step 2 — most do after install.
+## Step 1: Register OpenAI as an LLM Service Provider
 
-Otherwise go to **Gateways** at the organization level and register one, following
-[Register an AI Gateway](../guides/register-ai-gateway.mdx).
+"Providers are managed at the organization level, so a single registration can be shared across all projects. To set this up:
 
-![deployed gateway list](../img/tutorials/control-what-your-agent-respond-to/gateway-list.png)
-
-## Step 2: Register OpenAI as an LLM Service Provider
-
-Providers are organization-level, so this is one registration every project can
-use. Go to **LLM Service Providers** under **Resources** and click
+1. Switch to the Organization view in the Agent Manager console by clicking the organization icon next to the Agent Manager logo.
+2. Go to Resources > LLM Service Providers.
+3. Click Add Provider." (or your specific button label)
 **+ Add Service Provider**.
 
 | Field | Value |
@@ -66,29 +69,19 @@ Picking the template fills in the upstream URL, auth type, and API specification
 for you. Then supply your OpenAI key as the **upstream credential** and click
 **Add provider**.
 
-{/* SCREENSHOT: Add Service Provider form with the OpenAI template selected and context path /openai */}
+The **Resilience** tab allows you to set timeout parameters, which are useful for long-lived connections. For this tutorial, the default values are sufficient. You can find additional details [here].
 
-That key is now stored once, centrally. This is the payoff: when it rotates, you
+In this manner the key can be stored once, centrally. This is the payoff: when it rotates, you
 edit it here and every agent using this provider picks it up — no redeployments,
 and no agent ever held it.
 
-On the **Overview** tab, select your AI Gateway and **Generate API Key**. The
-invoke URL shown is what agents will call. Full field reference:
-[Register an LLM Service Provider](../guides/register-llm-service-provider.mdx).
+## Step 2: Add the Guardrail
 
-## Step 3: Add the Guardrail
+In the provider's **Guardrails** tab and click **+ Add Guardrail** 
 
-Open the provider's **Guardrails** tab and click **+ Add Guardrail** under
-**Global Guardrails**.
+In the serach tab put prompt decoratoe and Add a **Prompt Decorator** policy and give it an instruction along these lines:
 
-{/* SCREENSHOT: Guardrails tab with the policy picker open, showing available policies */}
-
-The list you see is not fixed by Agent Manager — the available policies are
-reported by the gateways in your organization, each with its own parameters. The
-gateway enforces them, so the gateway determines the menu.
-
-Add a **Prompt Decorator** policy and give it an instruction along these lines:
-
+For the prompt decorator config
 ```text
 You handle IT support requests for AcmeCorp employees only: passwords, software
 access, tickets, outages, and IT policy. If a request is not IT support, politely
@@ -96,7 +89,11 @@ decline and suggest the employee contact the relevant team. Never write code,
 essays, or creative content.
 ```
 
+keep the otheres in default configurations
+
 Save it.
+
+Next click ** Add Provider ** Now you will be redirected to the llm provider page that we have configured. 
 
 Guardrails stack in three layers — global on the provider (what you just did),
 per-operation on the provider, and per-agent on the binding you'll create in
@@ -105,19 +102,23 @@ stricter without imposing that on everyone.
 
 ## Step 4: Point the Agent at the Provider
 
-Go back to your `it-helpdesk` agent, open its **LLM Configuration**, and click
-**+ Add** to attach `Shared OpenAI`.
+Go back to your `it-helpdesk` agent, 
+You should follow the Orgnaizationn lvel view > .default Project and then the agent
+Open it's configure ssection and then go to the LLM configurations section
+Then **+ Add LLM Configuration** to attach `Shared OpenAI` LLM provider that yiu have created previously.
 
-{/* SCREENSHOT: Agent LLM Configuration panel with the provider side panel open */}
 
-Attaching per environment is the point here: development can use a cheap model
-and production a stronger one, with no change to the agent.
+Now this new configurations will be injected to the agent as enviroment varialbles and the variable names that will be appearing is shown in the Enviroment variable Names tab which will appear as OPENAI_URL and OPENAI_API_KEY and change the variable values to LLM_PROVIDER_URL and the LLM_PROVIDER_KEY.  Note that these values can be edited based on the way that you are refereincing the provider in your agent's codebase
+
+Now save this and this will trigger a redeploy of the agent wait until the agent finsihes deploying
 
 <Tabs groupId="agent-hosting">
 <TabItem value="platform" label="Platform-Hosted Agent" default>
 
-Now flip the agent over to using it. In **Environment Variables**, add:
+Now you have to make a small change to the enviroment variables section for that go to the agent's deploy section and in the default enviroment deployment card in the configurations and Secret section click configure
 
+
+Now add this new enviroment variable
 | Key | Value |
 |---|---|
 | `USE_LLM_PROVIDER` | `true` |
@@ -129,7 +130,7 @@ endpoint by editing its config. The sample's `config.py` reads exactly this pair
 
 You can now delete `OPENAI_API_KEY` from the agent. It doesn't need it any more.
 
-Redeploy.
+Now click apply and this redeploy the agnt again since you have changed the envoroment variables of the agent
 
 </TabItem>
 <TabItem value="external" label="Externally-Hosted Agent">

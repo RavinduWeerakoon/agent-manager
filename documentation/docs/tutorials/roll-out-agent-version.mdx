@@ -28,6 +28,16 @@ An agent doesn't jump to production. It follows the
 `it-support` project you created in Chapter 1, which defines the order
 environments may be traversed: typically development → staging → production.
 
+```mermaid
+flowchart LR
+  B["Build<br/>one image"] -->|"deploy-non-production"| D["Development"]
+  D -->|"promote<br/>deploy-non-production"| S["Staging"]
+  S -->|"promote<br/>deploy-production"| P["Production"]
+```
+
+One image is built once and moves rightward; each hop is a promotion, and the
+last hop needs a permission the earlier ones don't.
+
 {/* SCREENSHOT: Deployment pipeline view showing the environment progression for the project */}
 
 If your installation only has a development environment, add staging and
