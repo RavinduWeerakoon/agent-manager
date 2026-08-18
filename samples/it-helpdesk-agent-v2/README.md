@@ -40,6 +40,7 @@ All configuration is environment variables. Only the LLM credential is required.
 | `LLM_PROVIDER_URL` / `LLM_PROVIDER_KEY` | — | Injected by Agent Manager; required when `USE_LLM_PROVIDER=true` |
 | `USE_MCP` | `false` | Load tools from an MCP proxy in addition to the in-process ones |
 | `GITHUB_URL` / `GITHUB_API_KEY` | — | Injected by Agent Manager when an MCP proxy named `GitHub` is attached; required when `USE_MCP=true` |
+| `ISSUE_TRACKER_REPO` | — | `owner/repo` of the IT team's known-issue tracker. Required when `USE_MCP=true`; issue searches are scoped to it |
 
 `LLM_PROVIDER_*` and `GITHUB_*` are **system-managed** — Agent Manager writes them
 per environment and they are read-only in the console. You never paste an upstream

@@ -74,7 +74,7 @@ if ! kubectl rollout restart deployment/coredns -n kube-system --context "${CLUS
     echo "❌ Failed to restart CoreDNS deployment"
     exit 1
 fi
-if ! kubectl rollout status deployment/coredns -n kube-system --context "${CLUSTER_CONTEXT}" --timeout=60s; then
+if ! kubectl rollout status deployment/coredns -n kube-system --context "${CLUSTER_CONTEXT}" --timeout=180s; then
     echo "❌ CoreDNS deployment failed to become ready"
     exit 1
 fi

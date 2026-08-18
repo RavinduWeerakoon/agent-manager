@@ -14,6 +14,21 @@ Your helpdesk agent works. Then security team reviews it and files two objection
 2. Nobody can see what it's spending, and nothing stops one bad loop from burning
    the month's token budget.
 
+## See It for Yourself
+
+Before changing anything, open **Try It** on your agent and ask it something with
+nothing to do with IT support:
+
+```text
+Write me a haiku about Kubernetes.
+```
+
+It with a perfectly decent haiku which completely outside the job of an it helpdesk agent. Nothing here is
+broken; the agent is doing what a helpful language model does. The system prompt
+in Chapter 1 told it it was an IT helpdesk agent, but a prompt is guidance, not a
+boundary. Ask nicely enough and the model will step outside it.
+
+
 The obvious fix is to edit the system prompt and redeploy — but that's rarely the right one. There can be situations like 
 
 - Compliance teams might want update rules without relying on developers.
@@ -93,14 +108,14 @@ keep the otheres in default configurations
 
 Save it.
 
-Next click ** Add Provider ** Now you will be redirected to the llm provider page that we have configured. 
+Next click **Add Provider** Now you will be redirected to the llm provider page that we have configured. 
 
 Guardrails stack in three layers — global on the provider (what you just did),
 per-operation on the provider, and per-agent on the binding you'll create in
-Step 4. The agent-level ones apply *in addition to* these, so one team can be
-stricter without imposing that on everyone.
+Step 4. The agent-level ones apply *in addition to* these, so one agent can have 
+stricter rules without imposing that on every other agent.
 
-## Step 4: Point the Agent at the Provider
+## Step 3: Point the Agent at the Provider
 
 Go back to your `it-helpdesk` agent, 
 You should follow the Orgnaizationn lvel view > .default Project and then the agent
@@ -108,14 +123,14 @@ Open it's configure ssection and then go to the LLM configurations section
 Then **+ Add LLM Configuration** to attach `Shared OpenAI` LLM provider that yiu have created previously.
 
 
-Now this new configurations will be injected to the agent as enviroment varialbles and the variable names that will be appearing is shown in the Enviroment variable Names tab which will appear as OPENAI_URL and OPENAI_API_KEY and change the variable values to LLM_PROVIDER_URL and the LLM_PROVIDER_KEY.  Note that these values can be edited based on the way that you are refereincing the provider in your agent's codebase
+Now this new configurations will be injected to the agent as enviroment varialbles and the variable names that will be appearing is shown in the Enviroment variable Names tab which will appear as `OPENAI_URL` and `OPENAI_API_KEY` and change the variable values to `LLM_PROVIDER_URL` and the `LLM_PROVIDER_KEY`.  Note that these values can be edited based on the way that you are refereincing the provider in your agent's codebase
 
 Now save this and this will trigger a redeploy of the agent wait until the agent finsihes deploying
 
 <Tabs groupId="agent-hosting">
 <TabItem value="platform" label="Platform-Hosted Agent" default>
 
-Now you have to make a small change to the enviroment variables section for that go to the agent's deploy section and in the default enviroment deployment card in the configurations and Secret section click configure
+Now you have to make a small change to the enviroment variables section, for that go to the agent's deploy page and in the default enviroment deployment card in the configurations and Secret section click configure
 
 
 Now add this new enviroment variable
@@ -128,7 +143,7 @@ those as system-managed variables when the provider is attached — they're
 read-only in the console, so the agent can't be repointed at an ungoverned
 endpoint by editing its config. The sample's `config.py` reads exactly this pair.
 
-You can now delete `OPENAI_API_KEY` from the agent. It doesn't need it any more.
+You can now delete `OPENAI_API_KEY` env variable from the agent. It doesn't need it any more.
 
 Now click apply and this redeploy the agnt again since you have changed the envoroment variables of the agent
 
@@ -166,14 +181,14 @@ update it wherever you exported it.
 
 ## Step 5: Prove the Guardrail Works
 
-In **Try It**, ask something off-topic:
+In **Try It**, ask the question you started with:
 
 ```text
 Write me a haiku about Kubernetes.
 ```
 
-It should decline and steer you back to IT support. Then confirm you haven't
-broken the real job:
+No haiku this time. It should decline and steer you back to IT support. Then
+confirm you haven't broken the real job:
 
 ```text
 I need my password reset. alice.chen@acmecorp.com, E-1001.
@@ -184,24 +199,11 @@ I need my password reset. alice.chen@acmecorp.com, E-1001.
 The agent's code, prompt, and tools are byte-for-byte what they were in Chapter 1.
 The behavior changed because the request path changed.
 
-## Step 6: Add Rate Limiting
-
-Open the provider's **Rate Limiting** tab.
-
-{/* SCREENSHOT: Rate Limiting tab showing provider-wide request and token count limits */}
-
-Set a **Provider-wide** limit — a request-per-window ceiling and a token-per-window
-ceiling. Start deliberately low, something you can hit in testing, then send
-several messages in quick succession until you're throttled.
-
-Limits apply at two scopes: provider level (everything through this provider) and
-consumer level (per calling agent). Provider-wide protects the upstream API and
-your bill; per-consumer stops one agent starving the others.
 
 ## What You've Built
 
-Off-topic requests refused, spending capped, and one central credential — none of
-which required touching the agent.
+Off-topic requests refused and one central credential, neither of which required
+touching the agent.
 
 The division of labor here is the real lesson, and it maps onto
 [roles](../concepts/organization.mdx#access-control): an **AI Lead** owns
@@ -211,8 +213,14 @@ one.
 
 ## What's Next
 
-The agent is governed, but it only knows about AcmeCorp's mock data. Employees
-keep asking it for access to source code repositories — something it can't do,
-because it has no tools that reach outside itself.
+You've governed what the agent *says*. Everything it *knows*, though, still comes
+from mock data inside its own process — it has no tool that reaches any real
+system.
 
-**[Chapter 3: Give the Agent Real Tools, Then Fence Them In →](./controlling-what-agents-can-access.mdx)**
+That's a problem for one of its own rules. The agent is supposed to check for
+duplicates before opening a ticket, but AcmeCorp's IT team logs known problems in
+a GitHub issue tracker it can't see. So it keeps filing tickets for issues
+engineering already knows about.
+
+Next you'll give it a real external system to read — and then make sure reading is
+all it can do.

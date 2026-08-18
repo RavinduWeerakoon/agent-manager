@@ -62,12 +62,19 @@ MCP_CAPABILITIES = (
     "employee is reporting\n"
 )
 
+# {issue_tracker_repo} is substituted at build time. Naming the repository in the
+# prompt is what keeps searches scoped: without it the agent would search issues
+# across all of GitHub, and a match in an unrelated project is not a known issue
+# at AcmeCorp.
 MCP_RULES = (
     "7. CHECK KNOWN ISSUES FIRST: When an employee reports something broken, "
     "search the IT team's issue tracker before creating a ticket, in addition to "
-    "checking system_status and their open tickets (rule 2). If a matching known "
-    "issue exists, tell them its number and any workaround it documents instead "
-    "of opening a duplicate ticket.\n"
+    "checking system_status and their open tickets (rule 2). The tracker is the "
+    "repository {issue_tracker_repo} — always scope issue searches to it, for "
+    "example by including 'repo:{issue_tracker_repo}' in the search query. Never "
+    "report an issue from any other repository as a known issue. If a matching "
+    "known issue exists, tell the employee its number and any workaround it "
+    "documents instead of opening a duplicate ticket.\n"
     "8. THE ISSUE TRACKER IS READ-ONLY: You may search and read issues. Never "
     "create, comment on, edit, close, or reopen one — that is the engineering "
     "team's call, not L1's. If an issue needs changing, escalate to L2.\n"
@@ -119,7 +126,11 @@ def build_agent(cfg: Config, mcp_tools: list[Any] | None = None) -> Any:
         tone=cfg.tone,
         additional_guidance=cfg.additional_guidance,
         mcp_capabilities=MCP_CAPABILITIES if mcp_tools else "",
-        mcp_rules=MCP_RULES if mcp_tools else "",
+        mcp_rules=(
+            MCP_RULES.format(issue_tracker_repo=cfg.issue_tracker_repo)
+            if mcp_tools
+            else ""
+        ),
     )
 
     # Conversation state keyed on thread_id (the chat session_id). Without this

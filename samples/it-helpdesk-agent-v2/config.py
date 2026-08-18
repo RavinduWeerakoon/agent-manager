@@ -24,6 +24,7 @@ class Config:
     use_mcp: bool
     mcp_url: str
     mcp_api_key: str
+    issue_tracker_repo: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -56,11 +57,25 @@ class Config:
         mcp_url = _env("GITHUB_URL", "")
         mcp_api_key = _env("GITHUB_API_KEY", "")
 
+        # Which repository holds the IT team's known-issue tracker. Without this the
+        # agent would search issues across the whole of GitHub, which is both slow
+        # and wrong — a match in someone else's project is not a known issue here.
+        issue_tracker_repo = _env("ISSUE_TRACKER_REPO", "")
+
         if use_mcp:
             if not mcp_url:
                 raise RuntimeError("USE_MCP is true but GITHUB_URL is not set")
             if not mcp_api_key:
                 raise RuntimeError("USE_MCP is true but GITHUB_API_KEY is not set")
+            if not issue_tracker_repo:
+                raise RuntimeError(
+                    "USE_MCP is true but ISSUE_TRACKER_REPO is not set "
+                    "(expected owner/repo, e.g. acme/it-tooling)"
+                )
+            if "/" not in issue_tracker_repo:
+                raise RuntimeError(
+                    f"ISSUE_TRACKER_REPO must be owner/repo, got: {issue_tracker_repo!r}"
+                )
 
         return cls(
             company_name=_env("COMPANY_NAME", "AcmeCorp"),
@@ -76,4 +91,5 @@ class Config:
             use_mcp=use_mcp,
             mcp_url=mcp_url,
             mcp_api_key=mcp_api_key,
+            issue_tracker_repo=issue_tracker_repo,
         )

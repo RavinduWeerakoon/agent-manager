@@ -4,11 +4,8 @@ title: Measure the Agent
 
 # Measure Whether the Agent Is doing good
 
-*Chapter 4 of 5 — continues from [Give the Agent Real Tools](./controlling-what-agents-can-access.mdx).*
-
 So far you've judged the agent by sending it a few messages and reading the
-replies. That worked for three chapters. It won't survive contact with production,
-where the questions become:
+replies. That worked for three chapters. But in a production setting this setup would be problematic:
 
 - Does it verify identity *every* time, or only when you're watching?
 - Does it actually refuse admin password resets, or did you get lucky?

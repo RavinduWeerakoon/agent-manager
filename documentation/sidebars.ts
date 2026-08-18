@@ -132,7 +132,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'tutorials/create-your-first-agent',
         'tutorials/govern-the-model',
-        'tutorials/controlling-what-agents-can-access',
+        'tutorials/give-the-agent-real-tools',
         'tutorials/observe-first-agent',
         'tutorials/roll-out-agent-version',
       ],
