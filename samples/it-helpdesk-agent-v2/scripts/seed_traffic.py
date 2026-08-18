@@ -103,7 +103,7 @@ def send(url: str, api_key: str | None, session_id: str, message: str) -> str:
     body = json.dumps({"session_id": session_id, "message": message}).encode()
     headers = {"Content-Type": "application/json"}
     if api_key:
-        headers["API-Key"] = api_key
+        headers["X-API-Key"] = api_key
 
     req = urllib.request.Request(
         url.rstrip("/") + "/chat", data=body, headers=headers, method="POST"

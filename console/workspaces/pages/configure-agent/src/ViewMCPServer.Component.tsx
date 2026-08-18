@@ -1132,7 +1132,7 @@ function buildMCPPythonSnippet(rows: { key: string; name: string }[]): string {
     '        "url": url,',
     '        "transport": "streamable_http",',
     '        "headers": {',
-    '            "API-Key": mcp_api_key,',
+    '            "X-API-Key": mcp_api_key,',
     '            "Authorization": "",',
     "        },",
     "    }",

@@ -36,7 +36,7 @@ MCP proxies are organization-level resources, like LLM providers. First go to th
 | Field | Value |
 |---|---|
 | **Name** | `GitHub` |
-| **Context path** | `/github` |
+| **Context** | `/github` |
 
 The name matters — it becomes the prefix of the environment variables Agent
 Manager injects later, so `GitHub` gives you `GITHUB_URL` and `GITHUB_API_KEY`,
@@ -91,7 +91,7 @@ flowchart LR
 
   subgraph C["1 · A tool call"]
     direction LR
-    A2["Agent<br/>holds GITHUB_API_KEY"] -->|"API-Key"| G2["MCP Proxy"]
+    A2["Agent<br/>holds GITHUB_API_KEY"] -->|"X-API-Key"| G2["MCP Proxy"]
     G2 -->|"Authorization: Bearer PAT"| U2["GitHub MCP server"] --> H["GitHub"]
   end
 ```
@@ -104,14 +104,7 @@ contains two tools and nothing else.
 
 The PAT never travels left of the gateway.The agent authenticates with a
 platform-issued key, and the gateway attaches the real credential on the way
-out — so an agent that leaks its environment leaks nothing that works against
-GitHub directly.
-
-:::note
-Access control needs the gateway to report the `mcp-acl-list` policy. If the tab
-is disabled, your environment's gateway doesn't offer it — the same
-gateway-determines-the-menu rule from Chapter 2.
-:::
+out
 
 ## Step 4: Attach the Proxy to the Agent
 

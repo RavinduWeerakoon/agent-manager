@@ -84,9 +84,11 @@ MCP_RULES = (
 async def load_mcp_tools(cfg: Config) -> list[Any]:
     """Discover tools from the AM MCP proxy.
 
-    The proxy is reached with the platform-issued key in an ``API-Key`` header —
-    the same pattern the LLM provider uses. The agent never holds the upstream
-    GitHub credential; the gateway attaches it on the way out.
+    The proxy is reached with the platform-issued key in an ``X-API-Key`` header —
+    the default for MCP proxies, and *not* the ``API-Key`` the LLM provider uses.
+    Each proxy's header name is a Security setting, so check yours if the gateway
+    answers 401. The agent never holds the upstream GitHub credential; the gateway
+    attaches it on the way out.
     """
     if not cfg.use_mcp:
         return []
@@ -98,7 +100,7 @@ async def load_mcp_tools(cfg: Config) -> list[Any]:
             "github": {
                 "url": cfg.mcp_url,
                 "transport": "streamable_http",
-                "headers": {"API-Key": cfg.mcp_api_key},
+                "headers": {"X-API-Key": cfg.mcp_api_key},
             }
         }
     )
