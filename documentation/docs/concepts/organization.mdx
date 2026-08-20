@@ -10,7 +10,7 @@ Organizations aren't something Agent Manager owns or invents, they're managed by
 
 ## What an Organization Contains
 
-**[Projects](./project.mdx)** are the containers your agents live in. Every agent belongs to exactly one project, and a project is also what a **[Deployment Pipeline](./deployment-pipeline.mdx)** attaches to — so the promotion path an agent follows is decided at the project level rather than per agent. An organization typically holds several projects, one per application or team.
+**[Projects](./project.mdx)** are the containers your agents live in. Every agent belongs to exactly one project, and a project is also what a **[Deployment Pipeline](./deployment-pipeline.mdx)** attaches to. So the promotion path an agent follows is decided at the project level rather than per agent. An organization typically holds several projects, one per application or team.
 
 **[LLM Service Providers](./llm-service-provider.mdx)** and **[MCP Proxies](./mcp-proxy.mdx)** are defined at the organization level rather than inside a project, so any agent in any project can reference them.
 
@@ -26,12 +26,12 @@ Access control in Agent Manager is defined at the organization level and nowhere
 Every action in the organization is authorized against an OAuth 2.0 scope named `amp:<resource>:<action>`(ex:- `amp:project:read`, `amp:agent:build`, `amp:gateway:create`).Scopes are issued as claims on an access token by the platform's identity provider. The same scope gates the same capability whether you reach the platform through the Console, the REST API, or the MCP servers. The full catalog is in the [Authorization reference](../reference/authorization.mdx).
 
 :::note
-This platform identity provider is not the same thing as the per-environment identity providers described in [Environment](./environment.mdx). This one authenticates **people and service accounts against the control plane** — who may create, build, deploy, and promote. The per-environment providers are attached to gateways and govern runtime traffic which token issuers an environment trusts on calls reaching a running agent or proxy endpoint.
+This platform identity provider is not the same thing as the per-environment identity providers described in [Environment](./environment.mdx). This one authenticates **people and service accounts against the control plane** who may create, build, deploy, and promote. The per-environment providers are attached to gateways and govern runtime traffic which token issuers an environment trusts on calls reaching a running agent or proxy endpoint.
 :::
 
 ### Roles Bundle Scopes Around Personas
 
-You don't grant scopes one at a time. A **role** is a named bundle of scopes, and you assign it to a **user** or to a **group** — assigning through groups is how access is usually managed at any real size, since team membership changes far more often than the permission set a team needs.
+You don't grant scopes one at a time. A **role** is a named bundle of scopes, and you assign it to a **user** or to a **group**. Assigning through groups is how access is usually managed at any real size, since team membership changes far more often than the permission set a team needs.
 
 Agent Manager ships four predefined roles, each shaped around a job rather than around a resource:
 
@@ -44,7 +44,7 @@ The split between those last two is the useful part: an AI Lead governs *what ag
 
 ### Production Is a Separate Permission
 
-Acting on an environment isn't one permission — it's two. `amp:agent:env-non-production` and `amp:agent:env-production` are distinct scopes checked alongside the operation's own, so a Developer can deploy, promote, and iterate freely across every environment that isn't flagged as production, while production stays with Platform Engineers and admins.
+Acting on an environment isn't one permission, it's two. `amp:agent:env-non-production` and `amp:agent:env-production` are distinct scopes checked alongside the operation's own, so a Developer can deploy, promote, and iterate freely across every environment that isn't flagged as production, while production stays with Platform Engineers and admins.
 
 This is what makes a [Deployment Pipeline](./deployment-pipeline.mdx) a real control rather than a convention, the pipeline defines the path an agent takes through environments, and the permission split decides who is allowed to move it along that path.
 

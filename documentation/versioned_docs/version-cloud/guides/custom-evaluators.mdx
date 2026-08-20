@@ -11,7 +11,7 @@ This guide walks you through creating custom evaluators in the AMP Console. Cust
 
 ## Prerequisites
 
-- A WSO2 Agent Manager cloud organization (see [Sign Up](../get-started/on-cloud.mdx))
+- An Agent Manager Cloud account (sign up at [console.agent-manager.cloud.wso2.com](https://console.agent-manager.cloud.wso2.com/))
 - An agent registered in AMP with an active environment
 - Familiarity with [evaluation concepts](../concepts/evaluation.mdx), especially evaluator types and evaluation levels
 - For LLM judge evaluators: an API key for a [supported LLM provider](../concepts/evaluation.mdx#supported-llm-providers)
@@ -86,7 +86,7 @@ Use `EvalResult.skip()` instead of returning a score of 0.0 when the evaluator i
 :::
 
 :::info Disallowed imports
-Source containing `os`, `subprocess`, `socket`, `ctypes`, or `importlib` imports (or a dynamic `__import__()` call) is rejected at creation/update time with a 400 error naming the pattern. This check always applies regardless of deployment, but it's a basic content check, not a full sandbox — write evaluators that don't need these regardless, since network egress is only restricted on deployments where it's enabled and enforced (see [Network access](../concepts/evaluation.mdx#custom-evaluators)).
+Source containing `os`, `subprocess`, `socket`, `ctypes`, or `importlib` imports (or a dynamic `__import__()` call) is rejected at creation/update time with a 400 error naming the pattern. This is a content check rather than a full sandbox, so write evaluators that don't need these regardless. It is not the only boundary: on Agent Manager Cloud evaluator code also runs with restricted network egress and cannot reach arbitrary external services — see [Network access](../concepts/evaluation.mdx#custom-evaluators).
 :::
 
   </TabItem>

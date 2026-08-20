@@ -35,11 +35,11 @@ The authorization mechanism is identical for every agent. The only difference is
 
 ## Prerequisites
 
-- `amctl` installed and logged in against your control plane (see [CLI Installation](./cli-installation.mdx) and [`amctl login`](../reference/cli/login.mdx)).
-- An [AI Gateway](../concepts/gateway.mdx) active for the environment you are configuring. The installer registers one per environment.
+- `amctl` installed and logged in against your organization (see [CLI Installation](./cli-installation.mdx), then `amctl login`).
+- An active AI Gateway for the environment you are configuring. On Agent Manager Cloud this is provisioned for you.
 - A reachable upstream MCP server URL.
 
-This guide uses the [`amctl api`](../reference/cli/api.mdx) command to call the control plane directly, which makes every step precise and copy-pasteable. The examples use the `default` organization, `default` project, and `default` environment — substitute your own.
+This guide uses the `amctl api` command to call the control plane directly, which makes every step precise and copy-pasteable. The examples use the `default` organization, `default` project, and `default` environment — substitute your own.
 
 ---
 
@@ -200,6 +200,6 @@ token claims.
 
 ## Next steps
 
-- [Authorization](../reference/authorization.mdx) — the platform-wide scope and role model these agent scopes plug into.
+- [AgentID](../concepts/agentid.mdx) — the identity each agent is issued, and how these scopes attach to it.
 - [Register an MCP Proxy](./register-mcp-proxy.mdx) — the full proxy registration reference, including the Console flow.
 - [Configure Agent MCP Proxies](./configure-agent-mcp-proxies.mdx) — attach a proxy to an agent so it can call the tools.

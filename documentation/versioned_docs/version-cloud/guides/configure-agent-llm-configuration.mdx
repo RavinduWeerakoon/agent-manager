@@ -190,6 +190,7 @@ Example cURL:
 ```bash
 curl -X POST <endpoint-url> \
   --header "API-Key: <your-api-key>" \
+  --header "Content-Type: application/json" \
   -d '{"model": "", "messages": [{"role": "user", "content": "Hi..."}]}'
 ```
 
@@ -227,7 +228,9 @@ From the LLM configuration detail page, click the **pencil icon** on the provide
 
 ## Notes
 
-- LLM provider credentials are **never exposed** to agent code directly — only the injected environment variables (platform agents) or the gateway endpoint + API key (external agents) are available at runtime.
+- The **upstream provider credential** (for example, your OpenAI key) is never given to the agent. It stays on the org-level provider, and the AI Gateway attaches it on the outbound call. What the agent receives instead is a platform-issued key scoped to this LLM configuration.
+  - **Platform agents** read the endpoint and that key from the injected environment variables (`OPENAI_URL` and `OPENAI_API_KEY` in the example above). Agent code can read them like any other variable, so treat them as secrets — do not log them, echo them in responses, or write them to traces.
+  - **External agents** receive the same gateway endpoint plus a configuration-specific client key, which you set wherever the agent runs.
 - For platform agents, if the agent is in a deployed state, the updated LLM configuration is injected into the running pod automatically — no rebuild or redeploy is required.
 - For external agents, the Endpoint URL routes traffic through the AI Gateway, enabling centralized rate limiting, access control, and guardrails configured at the org level.
 - The external agent API Key shown after saving is a **one-time display** — it cannot be retrieved again. If lost, delete the LLM configuration and re-add it to generate a new key.
