@@ -1,0 +1,217 @@
+---
+title: Add guardrails to your agent
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Add guardrails to your agent
+
+Your helpdesk agent works. Then security team reviews it and files two objections:
+
+1. Employees have discovered it will happily debug their personal
+   side projects. It should refuse anything that isn't IT support.
+2. Nobody can see what it's spending, and nothing stops one bad loop from burning
+   the month's token budget.
+
+## See It for Yourself
+
+Before changing anything, open **Try It** on your agent and ask it something with
+nothing to do with IT support:
+
+```text
+Write me a haiku about Kubernetes.
+```
+
+It with a perfectly decent haiku which completely outside the job of an it helpdesk agent. Nothing here is
+broken; the agent is doing what a helpful language model does. The system prompt
+in Chapter 1 told it it was an IT helpdesk agent, but a prompt is guidance, not a
+boundary. Ask nicely enough and the model will step outside it.
+
+
+The obvious fix is to edit the system prompt and redeploy — but that's rarely the right one. There can be situations like 
+
+- Compliance teams might want update rules without relying on developers.
+- Policy updates should go live immediately without waiting for a software release.
+- Rules should be tracked in one central place instead of hiding them in prompt code.
+
+Everything in this chapter happens **outside the agent**. Its code never changes.
+
+## The Shape of the Fix
+
+Right now the agent holds an OpenAI key and calls OpenAI directly. You're going to
+put a [gateway](../concepts/gateway.mdx) in the middle:
+
+```mermaid
+flowchart LR
+  subgraph Before
+    direction LR
+    A1["Agent<br/>holds OPENAI_API_KEY"] --> O1["api.openai.com"]
+  end
+
+  subgraph After
+    direction LR
+    A2["Agent<br/>holds a gateway key"] --> G["AI Gateway<br/>guardrails · rate limits"]
+    G --> O2["api.openai.com"]
+  end
+```
+
+The agent stops holding the upstream credential entirely. It gets a
+platform-issued key and a gateway URL instead, and because every request now
+passes through one place, that place can enforce things.
+[LLM Service Provider](../concepts/llm-service-provider.mdx) explains why this
+indirection exists.
+
+
+## Step 1: Register OpenAI as an LLM Service Provider
+
+"Providers are managed at the organization level, so a single registration can be shared across all projects. To set this up:
+
+1. Switch to the Organization view in the Agent Manager console by clicking the organization icon next to the Agent Manager logo.
+2. Go to **LLM Service Providers** in the Resource section.
+3. Click **Add Service Provider**.
+
+Put the values listed below for the required inputs.
+
+| Field | Value |
+|---|---|
+| **Name** | `Shared OpenAI` |
+| **Version** | `v1.0` |
+| **Context path** | `/openai` |
+
+
+Select the provider template as OpenAI fills in the upstream URL, auth type, and API specification
+for you. Then supply your OpenAI key as the **upstream credential**
+
+The **Resilience** tab allows you to set timeout parameters, which are useful for long-lived connections. For this tutorial, the default values are sufficient.
+
+Now click **Add provider**.
+
+In this manner the key can be stored once, centrally. This is the payoff: when it rotates, you
+edit it here and every agent using this provider picks it up — no redeployments,
+and no agent ever held it.
+
+## Step 2: Add the Guardrail
+
+Navigate to the provider's Guardrails tab and select **Add Guardrail**. Search for **Prompt Decorator**, select it, and provide an instruction like the following:
+
+For the prompt decorator config
+```text
+You handle IT support requests for AcmeCorp employees only: passwords, software
+access, tickets, outages, and IT policy. If a request is not IT support, politely
+decline and suggest the employee contact the relevant team. Never write code,
+essays, or creative content.
+```
+
+keep the otheres in default configurations and click Add.
+
+Now scroll down and click Save to register the guardrail configuration.
+
+
+Guardrails stack in three layers
+1. global on the provider (what you just did),
+2. per-operation on the provide
+3. per-agent on the binding as agent can have stricter rules without imposing that on every other agent.
+
+## Step 3: Point the Agent at the Provider
+
+Go back to your `it-helpdesk` agent, Open it's configure section and then go to the LLM configurations section
+Then click **Add LLM Configuration** to attach `Shared OpenAI` LLM provider that you have created previously.
+
+
+Change the variable name values to `LLM_PROVIDER_URL` and the `LLM_PROVIDER_KEY`.  Note that these values can be edited based on the way that you are referencing the provider in your agent's codebase
+
+Now save this and this will trigger a redeploy of the agent wait until the agent finsihes deploying
+
+<Tabs groupId="agent-hosting">
+<TabItem value="platform" label="Platform-Hosted Agent" default>
+
+Next, you need to update the environment variables. Navigate to the agent's Deploy page, locate the default environment deployment card, and click Configure under the Configurations and Secrets section
+
+
+Now add this new enviroment variable
+| Key | Value |
+|---|---|
+| `USE_LLM_PROVIDER` | `true` |
+
+You do **not** add `LLM_PROVIDER_URL` or `LLM_PROVIDER_KEY`. Agent Manager injects
+those as system-managed variables when the provider is attached. Observe that they're
+read-only in the console enviroment variable section, so the agent can't be repointed at an ungoverned
+endpoint by editing its config.
+
+You can now delete `OPENAI_API_KEY` env variable from the agent. As the agent doesn't need it any more.
+
+Now click apply and this redeploys the agent again since you have changed the envoroment variables of the agent
+
+</TabItem>
+<TabItem value="external" label="Externally-Hosted Agent">
+
+From the configuration panel, copy the **Endpoint URL** and
+**API Key** for your environment, then set them where your agent runs:
+
+```bash
+export USE_LLM_PROVIDER=true
+export LLM_PROVIDER_URL="<endpoint URL from the console>"
+export LLM_PROVIDER_KEY="<API key from the console>"
+
+unset OPENAI_API_KEY     # the agent no longer needs it
+
+amp-instrument python main.py
+```
+
+The same three variables the platform would have injected, set by hand. Your
+agent now calls the gateway rather than OpenAI, so the guardrail apply to it identically — the governance doesn't depend on who runs the
+workload, only on which URL the traffic goes to.
+
+:::caution Copied values don't rotate themselves
+This is the one place the external path is genuinely weaker. A platform-hosted
+agent picks up a rotated upstream credential automatically, because it only ever
+held the gateway key. Here, if you regenerate the provider's API key you must
+update it wherever you exported it.
+:::
+
+</TabItem>
+</Tabs>
+
+## Step 5: Prove the Guardrail Works
+
+In **Try It**, ask the question you started with:
+
+```text
+Write me a haiku about Kubernetes.
+```
+
+No haiku this time. It should decline and steer you back to IT support. Then
+confirm you haven't broken the real job:
+
+```text
+I need my password reset. alice.chen@acmecorp.com, E-1001.
+```
+
+The agent's code, prompt, and tools are byte-for-byte what they were in Chapter 1.
+The behavior changed because the request path changed.
+
+
+## What You've Built
+
+Off-topic requests refused and one central credential, neither of which required
+touching the agent.
+
+The division of labor here is the real lesson, and it maps onto
+[roles](../concepts/organization.mdx#access-control): an **AI Lead** owns
+providers and guardrails, a **Developer** owns the agent, and neither has to wait
+on the other. A Developer can *connect* to a provider but not register or change
+one.
+
+## What's Next
+
+You've put guardrails to the agent *says*. Everything it *knows*, though, still comes
+from mock data inside its own process — it has no tool that reaches any real
+system.
+
+That's a problem for one of its own rules. The agent is supposed to check for
+duplicates before opening a ticket, but AcmeCorp's IT team logs known problems in
+a GitHub issue tracker it can't see. So it keeps filing tickets for issues
+engineering already knows about.
+
+Next you'll give it a real external system to read, and then make sure reading issues is the only thing it can do.
