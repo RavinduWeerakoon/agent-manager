@@ -2,8 +2,7 @@
 
 An L1 IT helpdesk agent for the fictional **AcmeCorp**. Employees ask it to reset
 passwords, request software, check ticket status, look up outages, and check the IT
-team's issue tracker for known problems. It is the running sample used throughout the
-[Agent Manager tutorial series](https://wso2.github.io/agent-manager/docs/tutorials/create-your-first-agent).
+team's issue tracker for known problems.
 
 Built with LangGraph (`create_react_agent`) on FastAPI, serving the Agent Manager
 chat contract: `POST /chat` on port `8000`.
@@ -11,8 +10,6 @@ chat contract: `POST /chat` on port `8000`.
 ## What it demonstrates
 
 Nine in-process tools over mock JSON cover the core helpdesk flows. On top of those,
-the sample carries what the tutorial series needs:
-
 | Capability | Why it's here |
 |---|---|
 | `USE_MCP` toggle loading tools from an MCP proxy | Chapter 3 connects the agent to GitHub through an Agent Manager MCP proxy |
@@ -69,16 +66,6 @@ curl -s localhost:8000/chat -H 'Content-Type: application/json' -d '{
 
 Reuse the same `session_id` across calls to continue a conversation. Omit it and
 each request starts its own.
-
-### Seeding traffic
-
-```bash
-python scripts/seed_traffic.py --url http://localhost:8000
-```
-
-Runs twelve scripted conversations — a deliberate mix of requests that should
-succeed and requests that should be refused, so an evaluator has both to score.
-Add `--api-key` when the endpoint is secured, and `--only <name>` to run one.
 
 ## Test data
 
