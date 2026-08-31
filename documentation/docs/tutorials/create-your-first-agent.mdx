@@ -20,19 +20,11 @@ problem the previous one leaves behind, so they're meant to be read in order.
 | # | Chapter | The problem it solves |
 |---|---|---|
 | 1 | **Create Your First Agent** *(you are here)* | Nothing is running yet. Get the agent deployed, talk to it, and read its first trace. |
-| 2 | [Add guardrails to your agent](./govern-the-model.mdx) | It answers anything and spends without limit. Put a gateway in front of the model. |
-| 3 | [Connect your agent to real tools](./give-the-agent-real-tools.mdx) | It only knows mock data. Connect a real system — then fence off what it must not touch. |
-| 4 | [Monitor Your Agent](./observe-first-agent.mdx) | You've only spot-checked it by hand. Score its behaviour automatically and continuously. |
+| 2 | [Add guardrails to your agent](./govern-the-model.mdx) | It answers anything which get asked. Put a gateway in front of the model. |
+| 3 | [Connect your agent to real tools](./give-the-agent-real-tools.mdx) | It only knows mock data. Connect a real MCP server and contorl the tools|
+| 4 | [Monitor Your Agent](./observe-first-agent.mdx) | You've only checked the agent by hand. Score its behaviour automatically and continuously. |
 | 5 | [Ship the agent to Production](./roll-out-agent-version.mdx) | It works in development. Promote it safely, and know how to undo it. |
 
-The thread running through all five is worth noticing as you go: **the agent's own
-code never changes after this chapter.** Every capability and control added later —
-guardrails, rate limits, external tools, access rules, evaluators, promotion — is
-platform configuration, applied from outside the agent. That separation is the point
-of the series, not an incidental detail.
-
-Each chapter also links out to the Guides for field-by-field reference, so the
-narrative stays readable while the details remain one click away.
 
 ### What you'll achieve in this chapter
 
@@ -45,7 +37,7 @@ narrative stays readable while the details remain one click away.
 - Agent Manager installed and reachable. [Quickstart](../get-started/quick-start.mdx) is the fastest route.
 - An OpenAI API key.
 
-The agent itself is the [`it-helpdesk-agent` sample](https://github.com/wso2/agent-manager/tree/main/samples/it-helpdesk-agent).
+The agent itself is an [`it-helpdesk-agent`](https://github.com/wso2/agent-manager/tree/main/samples/it-helpdesk-agent).
 It's a LangGraph agent on FastAPI with nine tools over mock data such as employee lookup,
 identity verification, tickets, password resets, software access, system status,
 policy search, and escalation to L2.
@@ -227,47 +219,21 @@ that memory.
 ### Calling It from Outside the Console
 
 **Try It** is convenient, but the agent has a real endpoint that anything can
-call. It isn't open, though: API key security is **on by default** for
-platform-hosted API agents, so a caller needs a key.
+call. It isn't open, though: **API key security is enabled by default** for
+platform-hosted API agents, so an external caller needs a key and sends it in the
+`X-API-Key` header.
 
-Create one from the agent's own sidebar, under **SECURITY → Credentials**:
-
-1. Click **Create API Key**.
-2. Give it a display name, such as `local-testing`, and pick an expiry.
-3. Click **Create** and copy the key immediately — the full value is shown once.
-   After that the console only displays a masked value, its status, and expiry.
-
-
-Then call the agent's invoke URL, passing the key in the `X-API-Key` header:
-
-```bash
-curl -X POST "<agent-invoke-url>/chat" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: <your-api-key>" \
-  -d '{
-    "session_id": "demo-1",
-    "message": "I need my password reset. alice.chen@acmecorp.com, E-1001."
-  }'
-```
-
-The header name is fixed at `X-API-Key`. Keep the same `session_id` across calls
-to continue one conversation, exactly as the console does.
-
-This is also what makes [Chapter 4](./observe-first-agent.mdx) work — the traffic
-seeding script calls this endpoint with `--api-key`, so it's worth confirming the
-key works now.
+Creating, rotating, and revoking those keys — and turning the protection off or
+swapping it for JWT — is covered in
+[Secure Agent Endpoints with API Keys](../guides/secure-agent-endpoints-with-api-keys.mdx).
+You'll need a key for [Chapter 4](./observe-first-agent.mdx), where the traffic
+seeding script calls this endpoint with `--api-key`.
 
 :::note Why Try It needed no key
 The console issues its own short-lived key per environment for the Test page and
-sends it as `X-API-Key` for you. That key is reserved for Try It and never appears
-under **Credentials**, which is why the console worked before you created
-anything.
+sends it for you. That key is reserved for Try It and never appears under
+**Credentials**, which is why the console worked without you creating anything.
 :::
-
-You can turn API key security off, or swap it for
-[JWT authentication](../guides/secure-agents-with-jwt-authentication.mdx), from
-the deploy configuration — the two are mutually exclusive. Full detail:
-[Secure Agent Endpoints with API Keys](../guides/secure-agent-endpoints-with-api-keys.mdx).
 
 </TabItem>
 <TabItem value="external" label="Externally-Hosted Agent">
