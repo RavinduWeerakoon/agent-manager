@@ -220,19 +220,10 @@ evaluators that apply to every trace:
 
 | Evaluator | Parameter | Default | What it catches |
 |---|---|---|---|
-| **Latency Performance** | `max_latency_ms` | `30000` | Responses getting slower, from an extra tool round trip or a slower model |
+| **Latency Performance** | `max_latency_ms` | `10000` | Responses getting slower, from an extra tool round trip or a slower model |
 | **Token Efficiency** | `max_tokens` | `10000` | Rising cost per conversation |
 | **Iteration Efficiency** | `max_iterations` | `10` | The agent looping without converging |
 
-Set `max_latency_ms` to `10000`, as in Step 2. Step 2 checked the ten-second
-standard against traces already collected; this monitor checks it as traffic
-arrives.
-
-
-The two monitors differ in when they run. The past-traces monitor is run
-deliberately after a change, and its results are read trace by trace. The
-continuous monitor runs unattended, so it carries only evaluators that do not
-require that review.
 
 ## Step 5: Read Scores in Context
 
