@@ -29,7 +29,7 @@ in Chapter 1 told it it was an IT helpdesk agent, but a prompt is guidance, not 
 boundary. Ask nicely enough and the model will step outside it.
 
 
-The obvious fix is to edit the system prompt and redeploy — but that's rarely the right one. There can be situations like 
+The obvious fix is to edit the system prompt and redeploy, but that's rarely the right one. There can be situations like 
 
 - Compliance teams might want update rules without relying on developers.
 - Policy updates should go live immediately without waiting for a software release.
@@ -88,7 +88,7 @@ The **Resilience** tab allows you to set timeout parameters, which are useful fo
 Now click **Add provider**.
 
 In this manner the key can be stored once, centrally. This is the payoff: when it rotates, you
-edit it here and every agent using this provider picks it up — no redeployments,
+edit it here and every agent using this provider picks it up, with no redeployments,
 and no agent ever held it.
 
 ## Step 2: Add the Guardrail
@@ -160,7 +160,7 @@ amp-instrument python main.py
 ```
 
 The same three variables the platform would have injected, set by hand. Your
-agent now calls the gateway rather than OpenAI, so the guardrail apply to it identically — the governance doesn't depend on who runs the
+agent now calls the gateway rather than OpenAI, so the guardrail apply to it identically. The governance doesn't depend on who runs the
 workload, only on which URL the traffic goes to.
 
 :::caution Copied values don't rotate themselves
@@ -206,7 +206,7 @@ one.
 ## What's Next
 
 You've put guardrails to the agent *says*. Everything it *knows*, though, still comes
-from mock data inside its own process — it has no tool that reaches any real
+from mock data inside its own process. It has no tool that reaches any real
 system.
 
 That's a problem for one of its own rules. The agent is supposed to check for

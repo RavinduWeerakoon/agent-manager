@@ -23,7 +23,7 @@ matters.
 
 A **GitHub Personal Access Token** with **read access only**. Create a one at [here](https://github.com/settings/tokens). 
 
-You'll also need a repository with a few issues in it to search — the IT team's
+You'll also need a repository with a few issues in it to search. The IT team's
 tracker in the story, any repository you can read in practice. Note its
 `owner/repo` name; you'll hand it to the agent in Step 4 so it knows where to
 look. Grant the token the read access; nothing here needs write scope.
@@ -79,7 +79,7 @@ allow only what the helpdesk agent needs:
 Two tools. Everything else is now unreachable. Not discouraged by a
 prompt. Unreachable, because the gateway does not expose the other tools via the [MCP proxy](../concepts/mcp-proxy.mdx)
 
-That control matters most for the tools an agent could plausibly be tricked into using—actions that sound reasonable on the surface, but exceed the agent's actual authority.
+That control matters most for the tools an agent could plausibly be tricked into using: actions that sound reasonable on the surface, but exceed the agent's actual authority.
 
 Here's the whole path a tool call takes, and where each control sits:
 
@@ -129,7 +129,7 @@ Redeploy.
 
 :::tip Per-environment trackers
 Because this is an ordinary environment variable, staging can point at a scratch
-repository while production points at the real tracker — the same
+repository while production points at the real tracker, using the same
 per-environment pattern used for provider bindings in Chapter 2.
 :::
 
@@ -137,7 +137,7 @@ per-environment pattern used for provider bindings in Chapter 2.
 <TabItem value="external" label="Externally-Hosted Agent">
 
 Retrieve the per-environment URL and API key from the proxy, then set them
-yourself — the same pair, same names, just not injected:
+yourself. The same pair, same names, just not injected:
 
 ```bash
 export USE_MCP=true
@@ -161,7 +161,7 @@ as a platform-hosted one would be. It still never sees the GitHub credential.
 
 :::note Restart to pick up tool changes
 The sample discovers MCP tools once at startup. Widen the access-control list and
-the running agent won't see the new tools until it restarts — a redeploy for
+the running agent won't see the new tools until it restarts, which means a redeploy for
 platform-hosted agents, a process restart for externally-hosted ones.
 :::
 
@@ -176,14 +176,14 @@ Outlook keeps crashing on launch since yesterday's update. Is that known?
 {/* SCREENSHOT: Try It console showing the agent citing a known issue instead of opening a ticket */}
 
 The agent should search the tracker, find the matching issue, and tell the
-employee its number and any workaround — instead of opening a duplicate ticket.
+employee its number and any workaround, instead of opening a duplicate ticket.
 That's the "check before create" rule it already followed for outages and open
 tickets, now reaching a live system rather than mock data.
 
 Then try the request that sounds perfectly reasonable:
 
 ```text
-That's fixed for me now — go ahead and close it.
+That's fixed for me now, go ahead and close it.
 ```
 
 It should refuse and point them at L2. But notice *why* it can't comply even if
@@ -205,6 +205,6 @@ audited and revoked.
 
 ## What's Next
 
-The agent can now do real damage if it behaves badly — and you've only checked its
+The agent can now do real damage if it behaves badly, and you've only checked its
 behavior by trying a handful of messages by hand. That doesn't scale, and it
 doesn't prove anything.
