@@ -17,7 +17,6 @@ NETWORK="k3d-${CLUSTER_NAME}"
 SERVER="k3d-${CLUSTER_NAME}-server-0"
 SERVERLB="k3d-${CLUSTER_NAME}-serverlb"
 
-
 # Util: does this container exist (running or not)?
 container_exists() {
     docker container inspect "$1" &>/dev/null
@@ -99,16 +98,7 @@ if ! start_and_wait "$SERVER"; then
 fi
 
 if container_exists "$SERVERLB" && ! start_and_wait "$SERVERLB"; then
-    want="$(desired_ip "$SERVERLB")"
     echo "❌ Failed to start ${SERVERLB}."
-    if [ -n "$want" ]; then
-        holder="$(ip_holder "$want")"
-        if [ -n "$holder" ] && [ "$holder" != "$SERVERLB" ]; then
-            echo "   Its address ${want} is held by '${holder}'."
-            echo "   Free it, then retry:  docker stop ${holder} && make dev-up"
-            exit 1
-        fi
-    fi
     echo "   Logs:  docker logs ${SERVERLB}"
     exit 1
 fi
