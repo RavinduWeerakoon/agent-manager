@@ -57,7 +57,7 @@ export const INPUT_LIMITS = {
    * ones. Generous enough for a few paragraphs of prose with formatting, and
    * still two orders of magnitude below the body budget.
    */
-  DESCRIPTION: 1_000,
+  DESCRIPTION: 2_000,
   /** Multi-line free text that is expected to be long: README, instructions. */
   LONG_TEXT: 8_000,
   /** Prompts and markdown documents authored in the console. */
