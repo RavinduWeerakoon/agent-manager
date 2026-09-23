@@ -18,6 +18,12 @@
 import { z } from "zod";
 import { INPUT_LIMITS } from '@agent-management-platform/types';
 
+// Exported so the create/edit inputs cap at exactly what these schemas
+// accept, instead of a generic name limit that would let a user type past
+// the cap and only learn about it on submit.
+export const IDENTITY_NAME_MAX_LENGTH = 50;
+
+
 // Shared Zod schemas + value types for the identity creation flows. Mirrors the
 // canonical pattern used by add-new-project/src/form/schema.ts so these forms
 // validate identically (field-level on change, whole-form on submit) via the
@@ -33,7 +39,7 @@ export const createRoleSchema = z.object({
     .string()
     .trim()
     .min(1, "Name is required")
-    .max(50, "Name must be at most 50 characters"),
+    .max(IDENTITY_NAME_MAX_LENGTH, `Name must be at most ${IDENTITY_NAME_MAX_LENGTH} characters`),
   description: z
     .string()
     .trim()
@@ -51,7 +57,7 @@ export const createGroupSchema = z.object({
     .string()
     .trim()
     .min(1, "Name is required")
-    .max(50, "Name must be at most 50 characters"),
+    .max(IDENTITY_NAME_MAX_LENGTH, `Name must be at most ${IDENTITY_NAME_MAX_LENGTH} characters`),
   description: z
     .string()
     .trim()

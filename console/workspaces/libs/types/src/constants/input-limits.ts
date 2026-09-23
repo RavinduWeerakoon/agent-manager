@@ -64,6 +64,12 @@ export const INPUT_LIMITS = {
   PROMPT: 16_000,
   /** Source code authored in the console (evaluator bodies, config editors). */
   SOURCE: 32_000,
+  /**
+   * Contents of a mounted config file. The backend accepts up to 1 MB, but a
+   * body that large never reaches it — the WAF rejects it first — so the
+   * console holds file content to what a request can actually carry.
+   */
+  FILE_CONTENT: 32_000,
   /** URLs and endpoints. */
   URL: 2_048,
   /** Environment variable / header / parameter keys. */

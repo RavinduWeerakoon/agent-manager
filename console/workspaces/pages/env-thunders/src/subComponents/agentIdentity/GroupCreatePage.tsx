@@ -26,6 +26,7 @@ import { withSearchParams } from "../../utils/withSearchParams";
 import {
   createAgentIdentityGroupSchema,
   type CreateAgentIdentityGroupFormValues,
+  IDENTITY_NAME_MAX_LENGTH,
 } from "./schemas";
 
 export const GroupCreatePage: React.FC = () => {
@@ -126,7 +127,7 @@ export const GroupCreatePage: React.FC = () => {
             <Form.Stack spacing={2}>
               <Form.ElementWrapper label="Name" name="name">
                 <TextField
-                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
+                  slotProps={{ htmlInput: { maxLength: IDENTITY_NAME_MAX_LENGTH } }}
                   id="name"
                   value={formData.name}
                   onChange={(e) => handleFieldChange("name", e.target.value)}

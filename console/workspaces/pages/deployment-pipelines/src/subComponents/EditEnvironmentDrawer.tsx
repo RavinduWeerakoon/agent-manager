@@ -39,7 +39,11 @@ import {
 } from "@agent-management-platform/views";
 import { useUpdateEnvironment } from "@agent-management-platform/api-client";
 import { type Environment, INPUT_LIMITS } from "@agent-management-platform/types";
-import { editEnvironmentSchema, type EditEnvironmentFormValues } from "../form/environmentSchema";
+import {
+  editEnvironmentSchema,
+  ENVIRONMENT_DISPLAY_NAME_MAX_LENGTH,
+  type EditEnvironmentFormValues,
+} from "../form/environmentSchema";
 
 interface EditEnvironmentDrawerProps {
   open: boolean;
@@ -166,7 +170,7 @@ export function EditEnvironmentDrawer({
                 <FormControl fullWidth error={Boolean(errors.displayName)}>
                   <FormLabel required>Display Name</FormLabel>
                   <TextField
-                    slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
+                    slotProps={{ htmlInput: { maxLength: ENVIRONMENT_DISPLAY_NAME_MAX_LENGTH } }}
                     fullWidth
                     size="small"
                     value={formData.displayName}

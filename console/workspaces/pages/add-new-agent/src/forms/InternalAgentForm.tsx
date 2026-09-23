@@ -351,7 +351,7 @@ export const InternalAgentForm = ({
             </Form.ElementWrapper>
             <Form.ElementWrapper label="Project Path" name="appPath">
               <TextField
-                slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.HANDLE } }}
+                slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.PATH } }}
                 id="appPath"
                 placeholder="my-agent"
                 value={formData.appPath}

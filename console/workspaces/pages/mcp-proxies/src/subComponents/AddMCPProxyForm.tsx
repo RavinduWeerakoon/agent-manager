@@ -233,7 +233,7 @@ export function AddMCPProxyForm({ onCancel }: AddMCPProxyFormProps) {
           <FormControl fullWidth error={Boolean(handleLengthError)}>
             <FormLabel required>Handle</FormLabel>
             <TextField
-              slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.HANDLE } }}
+              slotProps={{ htmlInput: { maxLength: MAX_HANDLE_LENGTH } }}
               fullWidth
               value={handle}
               onChange={(event) => handleHandleChange(event.target.value)}

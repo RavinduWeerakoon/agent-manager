@@ -127,7 +127,18 @@ export function FileMountEditor({
 
     const reader = new FileReader();
     reader.onload = () => {
-      onContentChange(reader.result as string);
+      // The size check above is on the encoded file; the cap the content field
+      // enforces is on decoded characters, so an upload has to be measured
+      // again here rather than inheriting the input's `maxLength`.
+      const content = reader.result as string;
+      if (content.length > INPUT_LIMITS.FILE_CONTENT) {
+        setUploadError(
+          `File content exceeds the ${INPUT_LIMITS.FILE_CONTENT.toLocaleString()} character limit `
+          + `(${content.length.toLocaleString()} characters)`
+        );
+        return;
+      }
+      onContentChange(content);
       if (!keyValue) {
         onKeyChange(file.name);
       }
@@ -225,7 +236,7 @@ export function FileMountEditor({
       </Stack>
       <Box>
         <TextInput
-          maxLength={INPUT_LIMITS.LONG_TEXT}
+          maxLength={INPUT_LIMITS.FILE_CONTENT}
           label="File Content"
           fullWidth
           size="small"

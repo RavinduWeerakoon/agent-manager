@@ -38,6 +38,7 @@ import { withSearchParams } from "../../utils/withSearchParams";
 import {
   createAgentIdentityRoleSchema,
   type CreateAgentIdentityRoleFormValues,
+  IDENTITY_NAME_MAX_LENGTH,
 } from "./schemas";
 import type { ScopeChoice } from "./scopeChoice";
 
@@ -147,7 +148,7 @@ export const RoleCreatePage: React.FC = () => {
             <Form.Stack spacing={2}>
               <Form.ElementWrapper label="Name" name="name">
                 <TextField
-                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
+                  slotProps={{ htmlInput: { maxLength: IDENTITY_NAME_MAX_LENGTH } }}
                   id="name"
                   value={formData.name}
                   onChange={(e) => handleFieldChange("name", e.target.value)}

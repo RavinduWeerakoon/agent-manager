@@ -40,6 +40,15 @@ import {
 const KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const KEY_MAX_LENGTH = 64;
 
+// `maxLength` on the inputs only constrains typing. A .env upload or paste
+// writes straight to row state, so both paths clamp here instead — otherwise an
+// imported value could exceed the cap the typed field enforces and push the
+// publish request past the WAF's body limit.
+const clampEntry = (key: string, value: string) => ({
+    key: key.slice(0, KEY_MAX_LENGTH),
+    value: value.slice(0, INPUT_LIMITS.VALUE),
+});
+
 const getKeyError = (key: string, keyCounts: Map<string, number>): string | null => {
     const trimmed = key.trim();
     if (!trimmed) return "Key is required.";
@@ -130,7 +139,7 @@ const ConfigRow: React.FC<ConfigRowProps> = ({
                 ) : (
                     <>
                         <TextInput
-                          maxLength={INPUT_LIMITS.KEY}
+                          maxLength={KEY_MAX_LENGTH}
                             placeholder="Key"
                             value={row.key}
                             onChange={(e) => onUpdate("key", e.target.value.replace(/\s/g, "_"))}
@@ -155,10 +164,11 @@ const ConfigRow: React.FC<ConfigRowProps> = ({
                                 }
                                 if (bulkEntries.length === 1) {
                                     e.preventDefault();
-                                    onUpdateMany({
-                                        key: bulkEntries[0].key.replace(/\s/g, "_"),
-                                        defaultValue: bulkEntries[0].value,
-                                    });
+                                    const single = clampEntry(
+                                        bulkEntries[0].key.replace(/\s/g, "_"),
+                                        bulkEntries[0].value,
+                                    );
+                                    onUpdateMany({ key: single.key, defaultValue: single.value });
                                     return;
                                 }
 
@@ -168,10 +178,8 @@ const ConfigRow: React.FC<ConfigRowProps> = ({
                                 const pastedValue = stripQuotes(pasted.slice(equalsIdx + 1).trim());
                                 if (!pastedKey) return;
                                 e.preventDefault();
-                                onUpdateMany({
-                                    key: pastedKey.replace(/\s/g, "_"),
-                                    defaultValue: pastedValue,
-                                });
+                                const raw = clampEntry(pastedKey.replace(/\s/g, "_"), pastedValue);
+                                onUpdateMany({ key: raw.key, defaultValue: raw.value });
                             }}
                             fullWidth
                             size="small"
@@ -308,8 +316,7 @@ export const RuntimeConfigEditor: React.FC<RuntimeConfigEditorProps> = ({
         });
 
         for (const rawEntry of entries) {
-            const key = rawEntry.key.replace(/\s/g, "_");
-            const value = rawEntry.value;
+            const { key, value } = clampEntry(rawEntry.key.replace(/\s/g, "_"), rawEntry.value);
             const existingIndex = indexByKey.get(key);
             if (existingIndex !== undefined) {
                 next[existingIndex] = { ...next[existingIndex], defaultValue: value };

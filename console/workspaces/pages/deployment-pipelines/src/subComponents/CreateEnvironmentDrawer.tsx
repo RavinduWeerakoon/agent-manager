@@ -44,7 +44,7 @@ import {
   useListDataPlanes,
   useCheckThunderUrlAvailability,
 } from "@agent-management-platform/api-client";
-import { globalConfig, type DataPlane, INPUT_LIMITS } from "@agent-management-platform/types";
+import { globalConfig, type DataPlane } from "@agent-management-platform/types";
 import {
   getAgentManagerUrl,
   getAmpVersionHelm,
@@ -53,6 +53,9 @@ import {
 } from "@agent-management-platform/shared-component";
 import {
   createEnvironmentSchema,
+  ENVIRONMENT_DISPLAY_NAME_MAX_LENGTH,
+  ENVIRONMENT_NAME_MAX_LENGTH,
+  THUNDER_HANDLE_MAX_LENGTH,
   type CreateEnvironmentFormValues,
   type IsolationTier,
 } from "../form/environmentSchema";
@@ -461,7 +464,7 @@ export function CreateEnvironmentDrawer({
             <FormControl fullWidth error={Boolean(errors.displayName)}>
               <FormLabel required>Display Name</FormLabel>
               <TextField
-                slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
+                slotProps={{ htmlInput: { maxLength: ENVIRONMENT_DISPLAY_NAME_MAX_LENGTH } }}
                 size="small"
                 fullWidth
                 value={formData.displayName}
@@ -475,7 +478,7 @@ export function CreateEnvironmentDrawer({
             <FormControl fullWidth error={Boolean(errors.name)}>
               <FormLabel>Name</FormLabel>
               <TextField
-                slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.HANDLE } }}
+                slotProps={{ htmlInput: { maxLength: ENVIRONMENT_NAME_MAX_LENGTH } }}
                 size="small"
                 fullWidth
                 value={formData.name}
@@ -522,7 +525,7 @@ export function CreateEnvironmentDrawer({
             >
               <FormLabel>Identity Service Handle</FormLabel>
               <TextField
-                slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.HANDLE } }}
+                slotProps={{ htmlInput: { maxLength: THUNDER_HANDLE_MAX_LENGTH } }}
                 size="small"
                 fullWidth
                 value={formData.thunderHandle ?? ""}
