@@ -16,10 +16,15 @@
  */
 
 import { z } from "zod";
+import { INPUT_LIMITS } from '@agent-management-platform/types';
 
 export const editEnvironmentSchema = z.object({
   displayName: z.string().min(1, "Display name is required").max(128, "Display name must be 128 characters or less"),
-  description: z.string().nullable().optional(),
+  description: z
+    .string()
+    .max(INPUT_LIMITS.DESCRIPTION, `Description must be at most ${INPUT_LIMITS.DESCRIPTION} characters`)
+    .nullable()
+    .optional(),
   isProduction: z.boolean().optional(),
 });
 
@@ -75,7 +80,10 @@ export const createEnvironmentSchema = z.object({
     .max(64, "Name must be 64 characters or less")
     .regex(/^[a-z0-9-]+$/, "Name must be lowercase alphanumeric with hyphens only"),
   displayName: z.string().min(1, "Display name is required").max(128, "Display name must be 128 characters or less"),
-  description: z.string().optional(),
+  description: z
+    .string()
+    .max(INPUT_LIMITS.DESCRIPTION, `Description must be at most ${INPUT_LIMITS.DESCRIPTION} characters`)
+    .optional(),
   dataplaneRef: z.string().min(1, "Data plane is required"),
   dnsPrefix: z.string().min(1, "DNS prefix is required").max(100),
   isProduction: z.boolean().optional(),

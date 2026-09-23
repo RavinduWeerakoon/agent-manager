@@ -16,10 +16,14 @@
  */
 
 import { z } from "zod";
+import { INPUT_LIMITS } from '@agent-management-platform/types';
 
 const pipelineSchema = z.object({
   displayName: z.string().min(1, "Display name is required").max(128, "Display name must be 128 characters or less"),
-  description: z.string().optional(),
+  description: z
+    .string()
+    .max(INPUT_LIMITS.DESCRIPTION, `Description must be at most ${INPUT_LIMITS.DESCRIPTION} characters`)
+    .optional(),
   chain: z
     .array(z.string().min(1, "Select an environment"))
     .min(1, "Select at least one environment"),

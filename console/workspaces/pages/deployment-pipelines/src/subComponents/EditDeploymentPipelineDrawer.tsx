@@ -38,7 +38,7 @@ import {
   useUpdateOrgDeploymentPipeline,
   useListEnvironments,
 } from "@agent-management-platform/api-client";
-import type { DeploymentPipelineResponse } from "@agent-management-platform/types";
+import { type DeploymentPipelineResponse, INPUT_LIMITS } from "@agent-management-platform/types";
 import { editPipelineSchema, type EditPipelineFormValues } from "../form/schema";
 import { chainToPromotionPaths } from "../utils/chainUtils";
 import { validatePromotionChain } from "../utils/validatePromotionChain";
@@ -167,6 +167,7 @@ export function EditDeploymentPipelineDrawer(
                 <FormControl fullWidth error={Boolean(errors.displayName)}>
                   <FormLabel required>Display Name</FormLabel>
                   <TextField
+                    slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
                     fullWidth
                     size="small"
                     value={formData.displayName}
@@ -180,6 +181,7 @@ export function EditDeploymentPipelineDrawer(
                 <FormControl fullWidth>
                   <FormLabel>Description</FormLabel>
                   <TextField
+                    slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.DESCRIPTION } }}
                     fullWidth
                     size="small"
                     multiline

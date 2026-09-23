@@ -16,6 +16,7 @@
  */
 
 import { z } from "zod";
+import { INPUT_LIMITS } from '@agent-management-platform/types';
 
 // Shared Zod schemas + value types for the identity creation flows. Mirrors the
 // canonical pattern used by add-new-project/src/form/schema.ts so these forms
@@ -33,7 +34,11 @@ export const createRoleSchema = z.object({
     .trim()
     .min(1, "Name is required")
     .max(50, "Name must be at most 50 characters"),
-  description: z.string().trim().optional(),
+  description: z
+    .string()
+    .trim()
+    .max(INPUT_LIMITS.DESCRIPTION, `Description must be at most ${INPUT_LIMITS.DESCRIPTION} characters`)
+    .optional(),
 });
 
 export interface CreateGroupFormValues {
@@ -47,7 +52,11 @@ export const createGroupSchema = z.object({
     .trim()
     .min(1, "Name is required")
     .max(50, "Name must be at most 50 characters"),
-  description: z.string().trim().optional(),
+  description: z
+    .string()
+    .trim()
+    .max(INPUT_LIMITS.DESCRIPTION, `Description must be at most ${INPUT_LIMITS.DESCRIPTION} characters`)
+    .optional(),
 });
 
 export interface AddUserFormValues {

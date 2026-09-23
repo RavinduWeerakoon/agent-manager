@@ -36,9 +36,10 @@ import {
   DrawerContent,
   useFormValidation,
 } from "@agent-management-platform/views";
-import type {
-  LLMProviderResponse,
-  UpdateLLMProviderRequest,
+import {
+  type LLMProviderResponse,
+  type UpdateLLMProviderRequest,
+  INPUT_LIMITS,
 } from "@agent-management-platform/types";
 import {
   editLLMProviderSchema,
@@ -162,6 +163,7 @@ export function EditLLMProviderDrawer({
                 <FormControl fullWidth error={Boolean(errors.name)}>
                   <FormLabel required>Name</FormLabel>
                   <TextField
+                    slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
                     fullWidth
                     size="small"
                     value={formData.name}
@@ -175,6 +177,7 @@ export function EditLLMProviderDrawer({
                 <FormControl fullWidth error={Boolean(errors.description)}>
                   <FormLabel>Description</FormLabel>
                   <TextField
+                    slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.DESCRIPTION } }}
                     fullWidth
                     multiline
                     minRows={2}

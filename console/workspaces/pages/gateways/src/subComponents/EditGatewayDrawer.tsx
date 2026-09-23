@@ -36,9 +36,10 @@ import {
   useFormValidation,
 } from "@agent-management-platform/views";
 import { useUpdateGateway } from "@agent-management-platform/api-client";
-import type {
-  GatewayResponse,
-  UpdateGatewayRequest,
+import {
+  type GatewayResponse,
+  type UpdateGatewayRequest,
+  INPUT_LIMITS,
 } from "@agent-management-platform/types";
 import { editGatewaySchema, type EditGatewayFormValues } from "../form/schema";
 
@@ -178,6 +179,7 @@ export function EditGatewayDrawer({
                 <FormControl fullWidth error={Boolean(errors.displayName)}>
                   <FormLabel required>Display Name</FormLabel>
                   <TextField
+                    slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
                     fullWidth
                     size="small"
                     value={formData.displayName}

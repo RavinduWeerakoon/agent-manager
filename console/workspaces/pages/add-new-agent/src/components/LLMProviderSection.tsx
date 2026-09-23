@@ -74,6 +74,7 @@ import {
   absoluteRouteMap,
   type CatalogRateLimitingSummary,
   type CatalogSecuritySummary,
+  INPUT_LIMITS,
 } from "@agent-management-platform/types";
 import type { LLMProviderFormEntry } from "../form/schema";
 
@@ -444,6 +445,7 @@ const EntryCard: React.FC<EntryCardProps> = ({
             <Stack direction="row" spacing={2}>
               <Form.ElementWrapper label="URL variable name" name="urlVarName">
                 <TextField
+                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.KEY } }}
                   size="small"
                   fullWidth
                   value={entry.urlVarName ?? `${agentNameUpper}_${index + 1}_URL`}
@@ -464,6 +466,7 @@ const EntryCard: React.FC<EntryCardProps> = ({
               </Form.ElementWrapper>
               <Form.ElementWrapper label="API key variable name" name="apikeyVarName">
                 <TextField
+                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.KEY } }}
                   size="small"
                   fullWidth
                   value={entry.apikeyVarName ?? `${agentNameUpper}_${index + 1}_API_KEY`}

@@ -31,6 +31,7 @@ import {
 import { useCreateGitSecret } from '@agent-management-platform/api-client';
 import { useFormValidation } from '@agent-management-platform/views';
 import { z } from 'zod';
+import { INPUT_LIMITS } from "@agent-management-platform/types";
 
 interface CreateGitSecretModalProps {
   open: boolean;
@@ -133,6 +134,7 @@ export const CreateGitSecretModal = ({
 
           <Form.ElementWrapper label="Secret Name" name="name">
             <TextField
+              slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
               id="name"
               placeholder="e.g., my-github-pat"
               value={formState.name}
@@ -145,6 +147,7 @@ export const CreateGitSecretModal = ({
 
           <Form.ElementWrapper label="Username" name="username">
             <TextField
+              slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
               id="username"
               placeholder="e.g., your-github-username"
               value={formState.username}
@@ -157,6 +160,7 @@ export const CreateGitSecretModal = ({
 
           <Form.ElementWrapper label="Personal Access Token" name="password">
             <TextField
+              slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.SECRET } }}
               id="password"
               placeholder="ghp_xxxxxxxxxxxx"
               type="password"

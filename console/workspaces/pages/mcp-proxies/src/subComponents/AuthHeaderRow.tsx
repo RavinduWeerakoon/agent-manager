@@ -25,6 +25,7 @@ import {
   Typography,
 } from "@wso2/oxygen-ui";
 import { Eye, EyeOff } from "@wso2/oxygen-ui-icons-react";
+import { INPUT_LIMITS } from "@agent-management-platform/types";
 
 export interface AuthHeaderRowProps {
   enabled: boolean;
@@ -75,6 +76,7 @@ export function AuthHeaderRow({
         />
         <FormControl sx={{ flex: 1 }} error={error}>
           <TextField
+            slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.KEY } }}
             fullWidth
             size="small"
             placeholder="Key"
@@ -95,7 +97,7 @@ export function AuthHeaderRow({
             disabled={!enabled}
             error={error}
             type={showValue ? "text" : "password"}
-            slotProps={{
+            slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.VALUE },
               input: {
                 endAdornment: (
                   <InputAdornment position="end">

@@ -16,6 +16,7 @@
  */
 
 import { z } from "zod";
+import { INPUT_LIMITS } from '@agent-management-platform/types';
 
 // Zod schema for the agent-identity group/role creation flows. Mirrors
 // pages/identities/src/forms/schemas.ts so these forms validate identically
@@ -34,7 +35,11 @@ export const nameDescriptionSchema = z.object({
     .trim()
     .min(1, "Name is required")
     .max(50, "Name must be at most 50 characters"),
-  description: z.string().trim().optional(),
+  description: z
+    .string()
+    .trim()
+    .max(INPUT_LIMITS.DESCRIPTION, `Description must be at most ${INPUT_LIMITS.DESCRIPTION} characters`)
+    .optional(),
 });
 
 export type CreateAgentIdentityGroupFormValues = NameDescriptionFormValues;

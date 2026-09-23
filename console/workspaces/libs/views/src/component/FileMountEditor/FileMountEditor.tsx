@@ -24,6 +24,7 @@ import {
   Upload as UploadIcon,
 } from '@wso2/oxygen-ui-icons-react';
 import { TextInput } from '../FormElements';
+import { INPUT_LIMITS } from "@agent-management-platform/types";
 
 export interface FileMountEditorProps {
   /** Unused internally; kept optional for callers that still pass it. */
@@ -173,6 +174,7 @@ export function FileMountEditor({
       <Stack direction="row" gap={2} alignItems="end">
         <Box flex={1} minWidth={0}>
           <TextInput
+            maxLength={INPUT_LIMITS.NAME}
             label="File Name"
             fullWidth
             size="small"
@@ -184,6 +186,7 @@ export function FileMountEditor({
         </Box>
         <Box flex={1} minWidth={0}>
           <TextInput
+            maxLength={INPUT_LIMITS.PATH}
             label="Mount Path"
             fullWidth
             size="small"
@@ -222,6 +225,7 @@ export function FileMountEditor({
       </Stack>
       <Box>
         <TextInput
+          maxLength={INPUT_LIMITS.LONG_TEXT}
           label="File Content"
           fullWidth
           size="small"

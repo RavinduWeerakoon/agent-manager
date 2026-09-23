@@ -24,7 +24,7 @@ import {
   useFormValidation,
   useDirtyState,
 } from "@agent-management-platform/views";
-import { absoluteRouteMap } from "@agent-management-platform/types";
+import { absoluteRouteMap, INPUT_LIMITS } from "@agent-management-platform/types";
 import { createGroupSchema, type CreateGroupFormValues } from "./forms/schemas";
 
 export const GroupCreatePage: React.FC = () => {
@@ -121,6 +121,7 @@ export const GroupCreatePage: React.FC = () => {
             <Form.Stack spacing={2}>
               <Form.ElementWrapper label="Name" name="name">
                 <TextField
+                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
                   id="name"
                   value={formData.name}
                   onChange={(e) => handleFieldChange("name", e.target.value)}
@@ -137,6 +138,7 @@ export const GroupCreatePage: React.FC = () => {
                 name="description"
               >
                 <TextField
+                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.DESCRIPTION } }}
                   id="description"
                   value={formData.description}
                   onChange={(e) =>

@@ -17,7 +17,7 @@
  */
 
 import { z } from 'zod';
-import type { InputInterfaceType } from '@agent-management-platform/types';
+import { type InputInterfaceType, INPUT_LIMITS } from '@agent-management-platform/types';
 import type { AuthenticationType } from '@agent-management-platform/shared-component';
 
 export type InterfaceType = InputInterfaceType;
@@ -72,7 +72,11 @@ const baseAgentFields = {
     .string()
     .trim()
     .max(50, 'Name must be at most 50 characters'),
-  description: z.string().trim().optional(),
+  description: z
+    .string()
+    .trim()
+    .max(INPUT_LIMITS.DESCRIPTION, `Description must be at most ${INPUT_LIMITS.DESCRIPTION} characters`)
+    .optional(),
   // Per-entry validation is enforced inline by LabelsEditor (mirroring the
   // backend rules), so the schema only constrains the overall shape.
   labels: z.record(z.string(), z.string()).optional(),

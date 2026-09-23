@@ -60,7 +60,7 @@ import {
   useListEnvironments,
   useListMCPProxies,
 } from "@agent-management-platform/api-client";
-import { absoluteRouteMap } from "@agent-management-platform/types";
+import { absoluteRouteMap, INPUT_LIMITS } from "@agent-management-platform/types";
 import {
   EnvironmentVariablesReference,
   useMCPProxySecurity,
@@ -310,6 +310,7 @@ const EntryCard: React.FC<EntryCardProps> = ({
             <Stack direction="row" spacing={2}>
               <Form.ElementWrapper label="URL variable name" name="urlVarName">
                 <TextField
+                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.KEY } }}
                   size="small"
                   fullWidth
                   value={entry.urlVarName ?? `${agentNameUpper}_MCP_${index + 1}_URL`}
@@ -342,6 +343,7 @@ const EntryCard: React.FC<EntryCardProps> = ({
               ) : isSecurityUnknown || !showApiKeyField ? null : (
               <Form.ElementWrapper label="API key variable name" name="apikeyVarName">
                 <TextField
+                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.KEY } }}
                   size="small"
                   fullWidth
                   value={entry.apikeyVarName ?? `${agentNameUpper}_MCP_${index + 1}_API_KEY`}
