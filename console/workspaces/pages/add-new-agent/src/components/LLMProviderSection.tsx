@@ -70,13 +70,12 @@ import {
   PolicyListSection,
   type PolicySelection as GuardrailSelection,
 } from "@agent-management-platform/shared-component";
+import { AGENT_ENV_KEY_MAX_LENGTH, type LLMProviderFormEntry } from "../form/schema";
 import {
   absoluteRouteMap,
   type CatalogRateLimitingSummary,
   type CatalogSecuritySummary,
-  INPUT_LIMITS,
 } from "@agent-management-platform/types";
-import type { LLMProviderFormEntry } from "../form/schema";
 
 type DeploymentSummary = { gatewayName?: string; deployedAt?: string };
 
@@ -445,7 +444,7 @@ const EntryCard: React.FC<EntryCardProps> = ({
             <Stack direction="row" spacing={2}>
               <Form.ElementWrapper label="URL variable name" name="urlVarName">
                 <TextField
-                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.KEY } }}
+                  slotProps={{ htmlInput: { maxLength: AGENT_ENV_KEY_MAX_LENGTH } }}
                   size="small"
                   fullWidth
                   value={entry.urlVarName ?? `${agentNameUpper}_${index + 1}_URL`}
@@ -466,7 +465,7 @@ const EntryCard: React.FC<EntryCardProps> = ({
               </Form.ElementWrapper>
               <Form.ElementWrapper label="API key variable name" name="apikeyVarName">
                 <TextField
-                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.KEY } }}
+                  slotProps={{ htmlInput: { maxLength: AGENT_ENV_KEY_MAX_LENGTH } }}
                   size="small"
                   fullWidth
                   value={entry.apikeyVarName ?? `${agentNameUpper}_${index + 1}_API_KEY`}

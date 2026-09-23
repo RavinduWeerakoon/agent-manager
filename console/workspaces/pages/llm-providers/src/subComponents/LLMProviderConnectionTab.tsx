@@ -406,7 +406,8 @@ export function LLMProviderConnectionTab({
                   userActuallyTypedCredentialRef.current = true;
                   setCredentialValue(e.target.value);
                 }}
-                slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.SECRET },
+                slotProps={{
+                  htmlInput: { maxLength: INPUT_LIMITS.SECRET },
                   input: {
                     endAdornment: (
                       <InputAdornment position="end">

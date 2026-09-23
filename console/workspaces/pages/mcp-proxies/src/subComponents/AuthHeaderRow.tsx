@@ -97,7 +97,8 @@ export function AuthHeaderRow({
             disabled={!enabled}
             error={error}
             type={showValue ? "text" : "password"}
-            slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.VALUE },
+            slotProps={{
+              htmlInput: { maxLength: INPUT_LIMITS.VALUE },
               input: {
                 endAdornment: (
                   <InputAdornment position="end">

@@ -16,30 +16,11 @@
  * under the License.
  */
 
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState } from "react";
-import { Box,
-  FormHelperText,
-  FormLabel,
-  IconButton,
-  Stack,
-  Tab,
-  Tabs,
-  TextField,
-  Tooltip,
-  Typography } from "@wso2/oxygen-ui";
-import { Bold,
-  Heading2,
-  Italic,
-  Link2,
-  List,
-  Quote } from "@wso2/oxygen-ui-icons-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Box, FormHelperText, FormLabel, IconButton, Stack, Tab, Tabs, TextField, Tooltip, Typography } from "@wso2/oxygen-ui";
+import { Bold, Heading2, Italic, Link2, List, Quote } from "@wso2/oxygen-ui-icons-react";
 import { MarkdownView } from "@agent-management-platform/views";
-import { INPUT_LIMITS,
-} from "@agent-management-platform/types";
+import { INPUT_LIMITS } from "@agent-management-platform/types";
 import { type EditResult, type TextSelection, insertLink, prefixLines, wrapSelection } from "./textEditActions";
 
 type MarkdownEditorTab = "write" | "preview";

@@ -139,7 +139,7 @@ const ConfigRow: React.FC<ConfigRowProps> = ({
                 ) : (
                     <>
                         <TextInput
-                          maxLength={KEY_MAX_LENGTH}
+                            maxLength={KEY_MAX_LENGTH}
                             placeholder="Key"
                             value={row.key}
                             onChange={(e) => onUpdate("key", e.target.value.replace(/\s/g, "_"))}
@@ -201,7 +201,7 @@ const ConfigRow: React.FC<ConfigRowProps> = ({
                  * value. A fresh "Create new version" row (readonlyKey unset) still gets a
                  * normal, fully-editable field so authors can type a real secret default. */}
                 <TextInput
-                  maxLength={INPUT_LIMITS.VALUE}
+                    maxLength={INPUT_LIMITS.VALUE}
                     placeholder={
                         readonlyKey && row.isSecret
                             ? (row.defaultValue ? "•••••••• (hidden)" : "Not set")
@@ -253,7 +253,7 @@ const ConfigRow: React.FC<ConfigRowProps> = ({
             </Box>
         </Stack>
         <TextInput
-          maxLength={INPUT_LIMITS.DESCRIPTION}
+            maxLength={INPUT_LIMITS.DESCRIPTION}
             label="Description"
             placeholder="Optional"
             value={row.description ?? ""}

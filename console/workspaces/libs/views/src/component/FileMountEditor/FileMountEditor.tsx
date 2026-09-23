@@ -185,7 +185,7 @@ export function FileMountEditor({
       <Stack direction="row" gap={2} alignItems="end">
         <Box flex={1} minWidth={0}>
           <TextInput
-            maxLength={INPUT_LIMITS.NAME}
+            maxLength={INPUT_LIMITS.FILE_NAME}
             label="File Name"
             fullWidth
             size="small"

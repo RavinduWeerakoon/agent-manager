@@ -18,8 +18,13 @@
 import { z } from "zod";
 import { INPUT_LIMITS } from '@agent-management-platform/types';
 
+// Exported so the create/edit drawers cap their inputs at exactly what this
+// schema accepts.
+export const PIPELINE_DISPLAY_NAME_MAX_LENGTH = 128;
+
+
 const pipelineSchema = z.object({
-  displayName: z.string().min(1, "Display name is required").max(128, "Display name must be 128 characters or less"),
+  displayName: z.string().min(1, "Display name is required").max(PIPELINE_DISPLAY_NAME_MAX_LENGTH, `Display name must be ${PIPELINE_DISPLAY_NAME_MAX_LENGTH} characters or less`),
   description: z
     .string()
     .max(INPUT_LIMITS.DESCRIPTION, `Description must be at most ${INPUT_LIMITS.DESCRIPTION} characters`)

@@ -39,7 +39,7 @@ import {
   useListEnvironments,
 } from "@agent-management-platform/api-client";
 import { type DeploymentPipelineResponse, INPUT_LIMITS } from "@agent-management-platform/types";
-import { editPipelineSchema, type EditPipelineFormValues } from "../form/schema";
+import { editPipelineSchema, type EditPipelineFormValues, PIPELINE_DISPLAY_NAME_MAX_LENGTH } from "../form/schema";
 import { chainToPromotionPaths } from "../utils/chainUtils";
 import { validatePromotionChain } from "../utils/validatePromotionChain";
 import { PipelineChainEditor } from "./PipelineChainEditor";
@@ -167,7 +167,7 @@ export function EditDeploymentPipelineDrawer(
                 <FormControl fullWidth error={Boolean(errors.displayName)}>
                   <FormLabel required>Display Name</FormLabel>
                   <TextField
-                    slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
+                    slotProps={{ htmlInput: { maxLength: PIPELINE_DISPLAY_NAME_MAX_LENGTH } }}
                     fullWidth
                     size="small"
                     value={formData.displayName}

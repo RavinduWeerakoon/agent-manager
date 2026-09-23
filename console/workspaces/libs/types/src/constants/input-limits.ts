@@ -42,8 +42,10 @@ export const MAX_REQUEST_BODY_BYTES = 56 * 1024;
  * instead of discovering it on submit.
  *
  * Counts are characters, not bytes. A non-ASCII character can serialise to
- * up to 4 bytes, which is why the sum of the limits a single form can reach
- * stays well under the byte budget above.
+ * up to 4 bytes, so a field's byte cost can be several times its character
+ * count. These per-field caps are not additive-safe on their own: a form that
+ * fills several large fields can still exceed the byte budget above, which is
+ * what `MAX_REQUEST_BODY_BYTES` is checked against at submit.
  */
 export const INPUT_LIMITS = {
   /** Generated/URL-safe handles (agent name, scope name, role handle). */
@@ -64,6 +66,13 @@ export const INPUT_LIMITS = {
   PROMPT: 16_000,
   /** Source code authored in the console (evaluator bodies, config editors). */
   SOURCE: 32_000,
+  /**
+   * Name of a mounted file. 253 is the Kubernetes ConfigMap/Secret key limit,
+   * which is what the agent form's schema validates against; the shared
+   * FileMountEditor caps at the same value so it cannot refuse a name the
+   * schema would accept.
+   */
+  FILE_NAME: 253,
   /**
    * Contents of a mounted config file. The backend accepts up to 1 MB, but a
    * body that large never reaches it — the WAF rejects it first — so the

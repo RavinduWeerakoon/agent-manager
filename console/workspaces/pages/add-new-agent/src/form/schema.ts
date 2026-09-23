@@ -20,6 +20,11 @@ import { z } from 'zod';
 import { type InputInterfaceType, INPUT_LIMITS } from '@agent-management-platform/types';
 import type { AuthenticationType } from '@agent-management-platform/shared-component';
 
+// Exported so the sections that name generated env vars cap their inputs at
+// exactly what this schema accepts.
+export const AGENT_ENV_KEY_MAX_LENGTH = 64;
+
+
 export type InterfaceType = InputInterfaceType;
 
 // LLMProviderFormEntry is managed as plain state outside the Zod schema
@@ -198,7 +203,7 @@ export const createAgentSchema = z.object({
           .string()
           .trim()
           .min(1, 'Environment variable key is required')
-          .max(64, 'Environment variable key must be at most 64 characters')
+          .max(AGENT_ENV_KEY_MAX_LENGTH, `Environment variable key must be at most ${AGENT_ENV_KEY_MAX_LENGTH} characters`)
           .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Env keys must match /^[A-Za-z_][A-Za-z0-9_]*$/')
           .optional(),
         value: z
@@ -217,7 +222,7 @@ export const createAgentSchema = z.object({
           .string()
           .trim()
           .min(1, 'File name is required')
-          .max(253, 'File name must be at most 253 characters')
+          .max(INPUT_LIMITS.FILE_NAME, `File name must be at most ${INPUT_LIMITS.FILE_NAME} characters`)
           .optional(),
         mountPath: z
           .string()

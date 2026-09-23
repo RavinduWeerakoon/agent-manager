@@ -35,6 +35,8 @@ import { Brain, Eye, EyeOff, Lock, Unlock } from "@wso2/oxygen-ui-icons-react";
 import {
   addLLMProviderSchema,
   type AddLLMProviderFormValues,
+  LLM_PROVIDER_NAME_MAX_LENGTH,
+  LLM_PROVIDER_DESCRIPTION_MAX_LENGTH,
 } from "../form/schema";
 import { useValidatedForm } from "../hooks/useValidatedForm";
 import {
@@ -376,7 +378,7 @@ export const AddLLMProviderForm: React.FC<AddLLMProviderFormProps> = ({
             <Box sx={{ flex: 2 }}>
               <Form.ElementWrapper label="Name" name="displayName">
                 <TextField
-                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.NAME } }}
+                  slotProps={{ htmlInput: { maxLength: LLM_PROVIDER_NAME_MAX_LENGTH } }}
                   id="displayName"
                   fullWidth
                   value={formData.displayName}
@@ -417,7 +419,7 @@ export const AddLLMProviderForm: React.FC<AddLLMProviderFormProps> = ({
                 name="description"
               >
                 <TextField
-                  slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.DESCRIPTION } }}
+                  slotProps={{ htmlInput: { maxLength: LLM_PROVIDER_DESCRIPTION_MAX_LENGTH } }}
                   id="description"
                   fullWidth
                   multiline
@@ -597,7 +599,8 @@ export const AddLLMProviderForm: React.FC<AddLLMProviderFormProps> = ({
                 placeholder="Enter your API key"
                 error={Boolean(errors.apiKey)}
                 helperText={errors.apiKey}
-                slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.SECRET },
+                slotProps={{
+                  htmlInput: { maxLength: INPUT_LIMITS.SECRET },
                   input: {
                     endAdornment: (
                       <InputAdornment position="end">
