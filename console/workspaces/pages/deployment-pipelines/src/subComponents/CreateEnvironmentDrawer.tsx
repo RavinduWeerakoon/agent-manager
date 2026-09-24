@@ -117,13 +117,19 @@ const DEFAULT_FORM: CreateEnvironmentFormValues = {
   thunderHandle: "",
 };
 
+// Capped at the schema's name limit: the display name allows more characters
+// than the name, and the name input's maxLength does not constrain this derived
+// state, so an uncapped result would fail validation and land in the copied
+// script. The trailing hyphen is stripped again in case the cut lands on one.
 function deriveNameFromDisplayName(displayName: string): string {
   return displayName
     .toLowerCase()
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "")
     .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+    .replace(/^-|-$/g, "")
+    .slice(0, ENVIRONMENT_NAME_MAX_LENGTH)
+    .replace(/-$/, "");
 }
 
 // Suggests "<name>-idp" as a starting point for the Thunder handle — truncated
@@ -133,7 +139,7 @@ function deriveNameFromDisplayName(displayName: string): string {
 const THUNDER_HANDLE_SUFFIX = "-idp";
 function deriveThunderHandleFromName(name: string): string {
   if (!name) return "";
-  const maxNameLen = 63 - THUNDER_HANDLE_SUFFIX.length;
+  const maxNameLen = THUNDER_HANDLE_MAX_LENGTH - THUNDER_HANDLE_SUFFIX.length;
   return `${name.slice(0, maxNameLen)}${THUNDER_HANDLE_SUFFIX}`;
 }
 
