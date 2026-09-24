@@ -932,7 +932,7 @@ it's the one that proves "the contract docs match what AMP actually consumes."
 ### 10.5 Where schema and docs converge
 
 The customer-facing manual-instrumentation contract reference in
-`documentation/docs/concepts/instrumentation.md` is generated from the JSON
+`docs/concepts/instrumentation.md` in wso2/docs-agent-platform is generated from the JSON
 schemas under `contracts/traceloop/v1/`. The same `make
 gen-instrumentation-contract` step (§6.5) emits the MDX table. Three consumers
 share one source of truth.
