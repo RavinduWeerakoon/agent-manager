@@ -16,7 +16,12 @@
  * under the License.
  */
 
-import { globalConfig } from '@agent-management-platform/types';
+import {
+    formatBytes,
+    getMaxRequestBodyBytes,
+    globalConfig,
+    utf8ByteLength,
+} from '@agent-management-platform/types';
 
 export function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -69,6 +74,35 @@ async function finalizeHttpWriteResponse(response: Response): Promise<Response> 
         await throwIfHttpWriteNotOk(response);
     }
     return response;
+}
+
+/**
+ * Serialise a write body, refusing to send one larger than the deployment's
+ * configured limit (MAX_REQUEST_BODY_BYTES).
+ *
+ * Where a WAF sits in front of the platform, an oversized body is rejected
+ * with a 403 that never reaches the service, so the console cannot tell it
+ * apart from a permission error. Checking here turns that into a message that
+ * names the cause. Deployments without such a limit set it to 0.
+ */
+export function serializeRequestBody(body: object): string {
+    const serialized = JSON.stringify(body);
+    const limit = getMaxRequestBodyBytes();
+    if (limit === 0) {
+        return serialized;
+    }
+    const byteLength = utf8ByteLength(serialized);
+    if (byteLength > limit) {
+        // Kept to one short sentence: this surfaces in the single-line,
+        // non-wrapping snackbar, which truncates anything longer.
+        const err = new Error(
+            `Request is too large (${formatBytes(byteLength)} of ${formatBytes(limit)}). `
+            + 'Shorten the longest fields, such as file contents or descriptions.'
+        ) as HttpErrorWithStatus;
+        err.status = 413;
+        throw err;
+    }
+    return serialized;
 }
 
 export async function httpGET(
@@ -176,7 +210,7 @@ export async function httpPOST(
         } : {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(body)
+        body: serializeRequestBody(body)
     });
     return finalizeHttpWriteResponse(response);
 }
@@ -195,7 +229,7 @@ export async function httpPUT(
         } : {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(body)
+        body: serializeRequestBody(body)
     });
     return finalizeHttpWriteResponse(response);
 }
@@ -231,7 +265,7 @@ export async function httpPATCH(
         } : {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(body)
+        body: serializeRequestBody(body)
     });
     return finalizeHttpWriteResponse(response);
 }

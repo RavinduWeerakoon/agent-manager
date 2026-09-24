@@ -17,7 +17,13 @@
  */
 
 import { z } from 'zod';
-import { type InputInterfaceType, INPUT_LIMITS } from '@agent-management-platform/types';
+import {
+  type InputInterfaceType,
+  INPUT_LIMITS,
+  formatBytes,
+  getFileMountMaxFileBytes,
+  utf8ByteLength,
+} from '@agent-management-platform/types';
 import type { AuthenticationType } from '@agent-management-platform/shared-component';
 
 // Exported so the sections that name generated env vars cap their inputs at
@@ -234,7 +240,9 @@ export const createAgentSchema = z.object({
           .optional(),
         value: z
           .string()
-          .max(INPUT_LIMITS.FILE_CONTENT, 'File content must be at most 1MB')
+          .refine((value) => utf8ByteLength(value) <= getFileMountMaxFileBytes(), {
+            message: `File content must be at most ${formatBytes(getFileMountMaxFileBytes())}`,
+          })
           .optional(),
         isSensitive: z.boolean().default(false),
       })

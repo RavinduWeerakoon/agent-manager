@@ -16,6 +16,54 @@
  * under the License.
  */
 
+import { globalConfig } from '../config';
+
+/** Request body cap used when MAX_REQUEST_BODY_BYTES is unset: 56 KB, under a 64 KB WAF limit. */
+export const DEFAULT_MAX_REQUEST_BODY_BYTES = 56 * 1024;
+
+/** File-mount cap used when FILE_MOUNT_MAX_FILE_BYTES is unset: 1 MB, the backend default. */
+export const DEFAULT_FILE_MOUNT_MAX_FILE_BYTES = 1_000_000;
+
+/**
+ * Parses a byte limit from runtime config. The template substitutes an unset
+ * variable with an empty string, and a typo should not silently remove a
+ * limit, so anything that is not a non-negative integer falls back.
+ */
+const readByteLimit = (raw: string | number | undefined, fallback: number): number => {
+  if (raw === undefined || raw === '') return fallback;
+  const parsed = typeof raw === 'number' ? raw : Number(raw.trim());
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+/**
+ * Largest request body, in bytes, the console sends on a write. 0 means no
+ * limit. Configured per deployment with MAX_REQUEST_BODY_BYTES.
+ */
+export const getMaxRequestBodyBytes = (): number =>
+  readByteLimit(globalConfig?.maxRequestBodyBytes, DEFAULT_MAX_REQUEST_BODY_BYTES);
+
+/**
+ * Largest file-mount content, in bytes. Configured per deployment with
+ * FILE_MOUNT_MAX_FILE_BYTES; a value of 0 is not a usable cap and falls back.
+ */
+export const getFileMountMaxFileBytes = (): number => {
+  const limit = readByteLimit(
+    globalConfig?.fileMountMaxFileBytes,
+    DEFAULT_FILE_MOUNT_MAX_FILE_BYTES,
+  );
+  return limit > 0 ? limit : DEFAULT_FILE_MOUNT_MAX_FILE_BYTES;
+};
+
+/** UTF-8 size of a string, which is what the backend and a WAF measure. */
+export const utf8ByteLength = (value: string): number => new TextEncoder().encode(value).length;
+
+/** Formats a byte count for messages, e.g. 1000000 → "1 MB", 57344 → "56 KB". */
+export const formatBytes = (bytes: number): string => {
+  if (bytes >= 1_000_000 && bytes % 1_000_000 === 0) return `${bytes / 1_000_000} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} bytes`;
+};
+
 /**
  * Per-field character limits for console form inputs.
  *
@@ -57,12 +105,6 @@ export const INPUT_LIMITS = {
    * schema would accept.
    */
   FILE_NAME: 253,
-  /**
-   * Contents of a mounted config file, matching the 1 MB the backend and the
-   * agent form's schema accept. Where a WAF sits in front of the platform, a
-   * file over its 64 KB body limit is still rejected there.
-   */
-  FILE_CONTENT: 1_048_576,
   /** URLs and endpoints. */
   URL: 2_048,
   /** Environment variable / header / parameter keys. */
