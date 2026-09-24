@@ -17,35 +17,19 @@
  */
 
 /**
- * Hard cap the AWS WAF in front of the platform applies to a request body.
- * A body over this size is rejected by the WAF itself with an opaque 403 that
- * never reaches the service, so the console has to stay under it on its own.
- */
-export const WAF_MAX_REQUEST_BODY_BYTES = 64 * 1024;
-
-/**
- * The budget the console allows a serialised request body to use. The headroom
- * below the WAF cap covers the parts of the body the user does not type —
- * generated fields, defaults the form fills in, JSON escaping of multi-byte
- * characters — so a request that passes this check is not sitting on the edge
- * of the WAF limit.
- */
-export const MAX_REQUEST_BODY_BYTES = 56 * 1024;
-
-/**
  * Per-field character limits for console form inputs.
  *
- * These exist so a single oversized field cannot push a request past
- * `WAF_MAX_REQUEST_BODY_BYTES`: the WAF drops such a request before the
- * service sees it, and the user gets a bare 403 with no field to blame.
+ * These exist so a single oversized field cannot push a request past the
+ * 64 KB body limit of the AWS WAF in front of the cloud and on-prem
+ * deployments: the WAF drops such a request before the service sees it, and
+ * the user gets a bare 403 with no field to blame.
  * Enforcing the limit at the input means the user sees the cap while typing
  * instead of discovering it on submit.
  *
  * Counts are characters, not bytes. A non-ASCII character can serialise to
  * up to 4 bytes, so a field's byte cost can be several times its character
- * count. These per-field caps are not additive-safe on their own: a form that
- * fills several large fields can still exceed the byte budget above, which is
- * what `MAX_REQUEST_BODY_BYTES` is checked against at submit.
+ * count. The caps are per field, so a form that fills several large fields
+ * can still exceed the WAF limit.
  */
 export const INPUT_LIMITS = {
   /** Generated/URL-safe handles (agent name, scope name, role handle). */
@@ -57,7 +41,7 @@ export const INPUT_LIMITS = {
   /**
    * Description fields across every create/edit form, including the markdown
    * ones. Generous enough for a few paragraphs of prose with formatting, and
-   * still two orders of magnitude below the body budget.
+   * still far below the WAF body limit.
    */
   DESCRIPTION: 2_000,
   /** Multi-line free text that is expected to be long: README, instructions. */
@@ -75,10 +59,8 @@ export const INPUT_LIMITS = {
   FILE_NAME: 253,
   /**
    * Contents of a mounted config file, matching the 1 MB the backend and the
-   * agent form's schema accept. This is deliberately larger than
-   * `MAX_REQUEST_BODY_BYTES`: where a WAF sits in front of the platform, a
-   * file this size is still rejected at submit, but with a message naming the
-   * cause rather than an opaque 403.
+   * agent form's schema accept. Where a WAF sits in front of the platform, a
+   * file over its 64 KB body limit is still rejected there.
    */
   FILE_CONTENT: 1_048_576,
   /** URLs and endpoints. */
