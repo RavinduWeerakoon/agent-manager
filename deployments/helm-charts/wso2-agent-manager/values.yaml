@@ -556,6 +556,9 @@ console:
     maxRequestBodyBytes: 57344
     # Per-file cap, in bytes, on file-mount content in the console. 0 uses
     # agentManagerService.config.fileMountLimits.maxFileBytes, keeping the two in step.
+    # The console also holds it under maxRequestBodyBytes (less 8 KB for the rest
+    # of the save), so with the defaults the effective cap is 48 KB; set
+    # maxRequestBodyBytes to 0 to allow files up to this value.
     fileMountMaxFileBytes: 0
     # Guardrails catalog URL for fetching available guardrail policies
     guardrailsCatalogUrl: "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0/policies?categories=AI,Guardrails&limit=50"

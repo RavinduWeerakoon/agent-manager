@@ -1215,7 +1215,7 @@
             },
             "fileMountLimits": {
               "additionalProperties": false,
-              "description": "File mount size caps, in bytes of inline content (secret-reference mounts do not count). All of an agent's mounts render into one ConfigMap/Secret, which Kubernetes limits to 1 MiB, so maxTotalBytes may not exceed 1048576 and maxFileBytes may not exceed maxTotalBytes.",
+              "description": "File mount size caps, in bytes of inline content (secret-reference mounts do not count). All of an agent's mounts render into one ConfigMap/Secret, which Kubernetes limits to 1 MiB, so maxTotalBytes may not exceed 1048576 and maxFileBytes may not exceed maxTotalBytes. The chart fails to render if maxFileBytes exceeds maxTotalBytes.",
               "properties": {
                 "maxFileBytes": {
                   "default": 1000000,
@@ -1816,7 +1816,7 @@
             },
             "fileMountMaxFileBytes": {
               "default": 0,
-              "description": "Per-file cap, in bytes, on file-mount content in the console. 0 uses agentManagerService.config.fileMountLimits.maxFileBytes, keeping the two in step.",
+              "description": "Per-file cap, in bytes, on file-mount content in the console. 0 uses agentManagerService.config.fileMountLimits.maxFileBytes, keeping the two in step. The console also holds it under maxRequestBodyBytes (less 8 KB for the rest of the save), so with the defaults the effective cap is 48 KB; set maxRequestBodyBytes to 0 to allow files up to this value.",
               "minimum": 0,
               "title": "fileMountMaxFileBytes",
               "type": "integer"

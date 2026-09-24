@@ -21,6 +21,12 @@ import { globalConfig } from '../config';
 /** Request body cap used when MAX_REQUEST_BODY_BYTES is unset: 56 KB, under a 64 KB WAF limit. */
 export const DEFAULT_MAX_REQUEST_BODY_BYTES = 56 * 1024;
 
+/**
+ * Share of the request-body limit reserved for everything in a save other
+ * than one file's content: the rest of the form and JSON escaping.
+ */
+export const REQUEST_BODY_HEADROOM_BYTES = 8 * 1024;
+
 /** File-mount cap used when FILE_MOUNT_MAX_FILE_BYTES is unset: 1 MB, the backend default. */
 export const DEFAULT_FILE_MOUNT_MAX_FILE_BYTES = 1_000_000;
 
@@ -30,8 +36,12 @@ export const DEFAULT_FILE_MOUNT_MAX_FILE_BYTES = 1_000_000;
  * limit, so anything that is not a non-negative integer falls back.
  */
 const readByteLimit = (raw: string | number | undefined, fallback: number): number => {
-  if (raw === undefined || raw === '') return fallback;
-  const parsed = typeof raw === 'number' ? raw : Number(raw.trim());
+  if (raw === undefined) return fallback;
+  // Trim first: Number('') is 0, so a whitespace-only value would otherwise
+  // parse as a real 0 and switch the request-size check off.
+  const text = typeof raw === 'number' ? null : raw.trim();
+  if (text === '') return fallback;
+  const parsed = text === null ? raw as number : Number(text);
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 };
 
@@ -47,21 +57,35 @@ export const getMaxRequestBodyBytes = (): number =>
  * FILE_MOUNT_MAX_FILE_BYTES; a value of 0 is not a usable cap and falls back.
  */
 export const getFileMountMaxFileBytes = (): number => {
-  const limit = readByteLimit(
+  const configured = readByteLimit(
     globalConfig?.fileMountMaxFileBytes,
     DEFAULT_FILE_MOUNT_MAX_FILE_BYTES,
   );
-  return limit > 0 ? limit : DEFAULT_FILE_MOUNT_MAX_FILE_BYTES;
+  const fileLimit = configured > 0 ? configured : DEFAULT_FILE_MOUNT_MAX_FILE_BYTES;
+  // A file larger than the request-body limit passes this check and is then
+  // refused at save, so cap it at what a save can carry, less room for the rest
+  // of the form and JSON escaping. Content heavy in quotes or newlines can
+  // still exceed it; the save-time check reports that with a readable error.
+  const bodyLimit = getMaxRequestBodyBytes();
+  if (bodyLimit === 0) return fileLimit;
+  const room = bodyLimit > REQUEST_BODY_HEADROOM_BYTES
+    ? bodyLimit - REQUEST_BODY_HEADROOM_BYTES
+    : bodyLimit;
+  return Math.min(fileLimit, room);
 };
 
 /** UTF-8 size of a string, which is what the backend and a WAF measure. */
 export const utf8ByteLength = (value: string): number => new TextEncoder().encode(value).length;
 
-/** Formats a byte count for messages, e.g. 1000000 → "1 MB", 57344 → "56 KB". */
+/**
+ * Formats a byte count for messages. Whole units read as units (1000000 →
+ * "1 MB", 57344 → "56 KB"); anything else is exact (57345 → "57,345 bytes"),
+ * so a value just over a limit never rounds to the limit itself.
+ */
 export const formatBytes = (bytes: number): string => {
   if (bytes >= 1_000_000 && bytes % 1_000_000 === 0) return `${bytes / 1_000_000} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} bytes`;
+  if (bytes >= 1024 && bytes % 1024 === 0) return `${bytes / 1024} KB`;
+  return `${bytes.toLocaleString('en-US')} bytes`;
 };
 
 /**

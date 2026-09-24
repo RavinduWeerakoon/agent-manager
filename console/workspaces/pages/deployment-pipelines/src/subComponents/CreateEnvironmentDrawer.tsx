@@ -251,7 +251,11 @@ export function CreateEnvironmentDrawer({
 
   const thunderHandleFormatValid =
     !!formData.thunderHandle && !errors.thunderHandle;
-  const { data: thunderHandleAvailability, isFetching: checkingThunderHandle } =
+  const {
+    data: thunderHandleAvailability,
+    isFetching: checkingThunderHandle,
+    isError: thunderHandleCheckFailed,
+  } =
     useCheckThunderUrlAvailability(
       { orgName: orgId },
       { handle: debouncedThunderHandle },
@@ -261,6 +265,15 @@ export function CreateEnvironmentDrawer({
     thunderHandleFormatValid &&
     debouncedThunderHandle === formData.thunderHandle &&
     thunderHandleAvailability?.available === false;
+  // True until the current handle's availability is known: during the debounce,
+  // while the check runs, and before its first result. A failed check does not
+  // block copying (the query does not retry, so it would block forever); the
+  // backend still rejects a taken handle when the script runs.
+  const thunderHandleAvailabilityPending =
+    thunderHandleFormatValid &&
+    (debouncedThunderHandle !== formData.thunderHandle ||
+      checkingThunderHandle ||
+      (thunderHandleAvailability === undefined && !thunderHandleCheckFailed));
 
   // The copied script creates the environment directly, bypassing the form's
   // submit validation, so the fields it embeds are checked against the schema
@@ -272,8 +285,16 @@ export function CreateEnvironmentDrawer({
         name: formData.name,
         displayName: formData.displayName,
         thunderHandle: formData.thunderHandle ?? "",
-      }).success && !thunderHandleTaken,
-    [formData.name, formData.displayName, formData.thunderHandle, thunderHandleTaken],
+      }).success &&
+      !thunderHandleTaken &&
+      !thunderHandleAvailabilityPending,
+    [
+      formData.name,
+      formData.displayName,
+      formData.thunderHandle,
+      thunderHandleTaken,
+      thunderHandleAvailabilityPending,
+    ],
   );
 
   useEffect(() => {
@@ -662,11 +683,13 @@ export function CreateEnvironmentDrawer({
                 </Tooltip>
                 <Tooltip
                   title={
-                    !scriptFieldsValid
-                      ? "Fix the highlighted fields to copy the script"
-                      : copied
-                        ? "Copied!"
-                        : "Copy"
+                    thunderHandleAvailabilityPending
+                      ? "Checking the identity service handle…"
+                      : !scriptFieldsValid
+                        ? "Fix the highlighted fields to copy the script"
+                        : copied
+                          ? "Copied!"
+                          : "Copy"
                   }
                 >
                   {/* span keeps the tooltip working on the disabled button */}
@@ -687,7 +710,9 @@ export function CreateEnvironmentDrawer({
             <Typography variant="caption" color="text.secondary">
               {scriptFieldsValid
                 ? "Your access token will be substituted when you copy."
-                : "Fix the name, display name, or identity service handle above to copy the script."}
+                : thunderHandleAvailabilityPending
+                  ? "Checking the identity service handle before the script can be copied."
+                  : "Fix the name, display name, or identity service handle above to copy the script."}
             </Typography>
           </Stack>
 
