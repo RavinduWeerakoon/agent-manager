@@ -49,10 +49,6 @@ jobs:
           </html>
           EOF
 
-          # GitHub Pages serves 404.html for any unmatched path, so this is what
-          # every old deep link hits. It carries the path across rather than
-          # dumping everyone on the home page: the migration kept the URL shape
-          # identical below the prefix, so
           #   /agent-manager/docs/v1.0.0/get-started/quick-start/
           # maps to
           #   <DOCS_URL>v1.0.0/get-started/quick-start/
