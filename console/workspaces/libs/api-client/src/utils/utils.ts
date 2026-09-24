@@ -44,7 +44,18 @@ export interface HttpOptions {
    useObsPlaneHostApi?: boolean;
 }
 
-type HttpErrorWithStatus = Error & { status: number; body?: unknown };
+type HttpErrorWithStatus = Error & { status: number; body?: unknown; code?: string };
+
+/**
+ * Set on the error serializeRequestBody throws, so error handlers can tell a
+ * client-side size refusal from a server response and keep its message.
+ */
+export const REQUEST_TOO_LARGE_CODE = 'REQUEST_TOO_LARGE';
+
+export function isRequestTooLargeError(error: unknown): error is Error {
+    return error instanceof Error
+        && (error as { code?: unknown }).code === REQUEST_TOO_LARGE_CODE;
+}
 
 async function throwIfHttpWriteNotOk(response: Response): Promise<void> {
     let body: unknown;
@@ -100,6 +111,7 @@ export function serializeRequestBody(body: object): string {
             + 'Shorten the longest fields, such as file contents or descriptions.'
         ) as HttpErrorWithStatus;
         err.status = 413;
+        err.code = REQUEST_TOO_LARGE_CODE;
         throw err;
     }
     return serialized;

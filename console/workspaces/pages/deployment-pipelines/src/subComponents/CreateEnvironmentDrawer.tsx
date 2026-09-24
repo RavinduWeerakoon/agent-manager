@@ -60,6 +60,13 @@ import {
   type IsolationTier,
 } from "../form/environmentSchema";
 
+// The fields the rendered add-environment.sh command embeds.
+const scriptFieldsSchema = createEnvironmentSchema.pick({
+  name: true,
+  displayName: true,
+  thunderHandle: true,
+});
+
 const TOKEN_MASK = "•••••••••••••••";
 
 // docsUrl is optional configuration. Leave the guide links undefined when it is
@@ -255,6 +262,20 @@ export function CreateEnvironmentDrawer({
     debouncedThunderHandle === formData.thunderHandle &&
     thunderHandleAvailability?.available === false;
 
+  // The copied script creates the environment directly, bypassing the form's
+  // submit validation, so the fields it embeds are checked against the schema
+  // here rather than trusted. Field error state only reflects the last edit
+  // and is empty before the first one.
+  const scriptFieldsValid = useMemo(
+    () =>
+      scriptFieldsSchema.safeParse({
+        name: formData.name,
+        displayName: formData.displayName,
+        thunderHandle: formData.thunderHandle ?? "",
+      }).success && !thunderHandleTaken,
+    [formData.name, formData.displayName, formData.thunderHandle, thunderHandleTaken],
+  );
+
   useEffect(() => {
     if (open) {
       setFormData(DEFAULT_FORM);
@@ -372,6 +393,7 @@ export function CreateEnvironmentDrawer({
   }, [showToken, getToken]);
 
   const handleCopy = useCallback(async () => {
+    if (!scriptFieldsValid) return;
     try {
       const token = resolvedToken ?? (await getToken());
       const script = buildScript(
@@ -389,6 +411,7 @@ export function CreateEnvironmentDrawer({
       // silently fail
     }
   }, [
+    scriptFieldsValid,
     resolvedToken,
     getToken,
     formData.name,
@@ -637,20 +660,34 @@ export function CreateEnvironmentDrawer({
                     {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
                   </IconButton>
                 </Tooltip>
-                <Tooltip title={copied ? "Copied!" : "Copy"}>
-                  <IconButton
-                    size="small"
-                    onClick={handleCopy}
-                    sx={{ color: copied ? "success.light" : "grey.400" }}
-                  >
-                    <Copy size={16} />
-                  </IconButton>
+                <Tooltip
+                  title={
+                    !scriptFieldsValid
+                      ? "Fix the highlighted fields to copy the script"
+                      : copied
+                        ? "Copied!"
+                        : "Copy"
+                  }
+                >
+                  {/* span keeps the tooltip working on the disabled button */}
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={handleCopy}
+                      disabled={!scriptFieldsValid}
+                      sx={{ color: copied ? "success.light" : "grey.400" }}
+                    >
+                      <Copy size={16} />
+                    </IconButton>
+                  </span>
                 </Tooltip>
               </Box>
               {displayScript}
             </Box>
             <Typography variant="caption" color="text.secondary">
-              Your access token will be substituted when you copy.
+              {scriptFieldsValid
+                ? "Your access token will be substituted when you copy."
+                : "Fix the name, display name, or identity service handle above to copy the script."}
             </Typography>
           </Stack>
 
