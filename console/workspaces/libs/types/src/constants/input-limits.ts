@@ -74,11 +74,13 @@ export const INPUT_LIMITS = {
    */
   FILE_NAME: 253,
   /**
-   * Contents of a mounted config file. The backend accepts up to 1 MB, but a
-   * body that large never reaches it — the WAF rejects it first — so the
-   * console holds file content to what a request can actually carry.
+   * Contents of a mounted config file, matching the 1 MB the backend and the
+   * agent form's schema accept. This is deliberately larger than
+   * `MAX_REQUEST_BODY_BYTES`: where a WAF sits in front of the platform, a
+   * file this size is still rejected at submit, but with a message naming the
+   * cause rather than an opaque 403.
    */
-  FILE_CONTENT: 32_000,
+  FILE_CONTENT: 1_048_576,
   /** URLs and endpoints. */
   URL: 2_048,
   /** Environment variable / header / parameter keys. */

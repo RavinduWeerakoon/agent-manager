@@ -234,7 +234,7 @@ export const createAgentSchema = z.object({
           .optional(),
         value: z
           .string()
-          .max(1048576, 'File content must be at most 1MB')
+          .max(INPUT_LIMITS.FILE_CONTENT, 'File content must be at most 1MB')
           .optional(),
         isSensitive: z.boolean().default(false),
       })
