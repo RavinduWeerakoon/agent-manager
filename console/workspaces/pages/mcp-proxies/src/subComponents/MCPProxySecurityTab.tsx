@@ -804,11 +804,16 @@ export function MCPProxySecurityTab({
           borderColor: isDirty ? "divider" : "transparent",
         }}
       >
-        {isDirty && (
-          <Typography variant="body2" color="warning.main" sx={{ mr: "auto" }}>
-            You have unsaved changes
-          </Typography>
-        )}
+        {/* Kept mounted so screen readers announce when edits become unsaved. */}
+        <Typography
+          variant="body2"
+          color="warning.main"
+          role="status"
+          aria-live="polite"
+          sx={{ mr: "auto" }}
+        >
+          {isDirty ? "You have unsaved changes" : ""}
+        </Typography>
         <Button
           variant="outlined"
           onClick={handleDiscard}
