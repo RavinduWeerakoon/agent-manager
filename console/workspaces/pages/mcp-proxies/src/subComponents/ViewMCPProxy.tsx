@@ -143,11 +143,23 @@ export function ViewMCPProxy() {
   // pages (sidebar, breadcrumbs, links) at the History API. Same-path changes
   // are skipped: tab and endpoint switches only touch the query string and are
   // guarded explicitly where they happen.
+  //
+  // Back/Forward fire popstate, which can't be cancelled. So while dirty, a
+  // duplicate entry for this same URL is pushed on top: Back lands on the
+  // original entry, the route doesn't change, and the dialog asks first.
   useEffect(() => {
     if (!hasUnsavedChanges) return undefined;
     const { history } = window;
     const originalPush = history.pushState.bind(history);
     const originalReplace = history.replaceState.bind(history);
+    const isSentinel = () =>
+      (history.state as { unsavedGuard?: boolean } | null)?.unsavedGuard === true;
+    const pushSentinel = () =>
+      originalPush({ ...(history.state ?? {}), unsavedGuard: true }, "");
+    let leaving = false;
+
+    if (!isSentinel()) pushSentinel();
+
     const intercept =
       (original: History["pushState"], replace: boolean): History["pushState"] =>
       (data, unused, url) => {
@@ -160,15 +172,36 @@ export function ViewMCPProxy() {
           original(data, unused, url);
           return;
         }
-        setPendingLeave(() => () =>
-          navigate(`${target.pathname}${target.search}${target.hash}`, { replace }),
-        );
+        const state = (data as { usr?: unknown } | null)?.usr;
+        setPendingLeave(() => () => {
+          leaving = true;
+          // Replace the sentinel so it doesn't linger as a stray history entry.
+          navigate(`${target.pathname}${target.search}${target.hash}`, {
+            replace: replace || isSentinel(),
+            state,
+          });
+        });
       };
+
+    const handlePopState = () => {
+      if (leaving) return;
+      pushSentinel();
+      setPendingLeave(() => () => {
+        leaving = true;
+        // Step past this page's own entry, which sits under the sentinel.
+        history.go(-2);
+      });
+    };
+
     history.pushState = intercept(originalPush, false);
     history.replaceState = intercept(originalReplace, true);
+    window.addEventListener("popstate", handlePopState);
     return () => {
       history.pushState = originalPush;
       history.replaceState = originalReplace;
+      window.removeEventListener("popstate", handlePopState);
+      // Saved or discarded in place: drop the sentinel so Back works normally.
+      if (!leaving && isSentinel()) history.back();
     };
   }, [hasUnsavedChanges, navigate]);
 

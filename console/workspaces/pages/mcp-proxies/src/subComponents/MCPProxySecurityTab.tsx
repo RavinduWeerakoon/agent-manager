@@ -772,59 +772,57 @@ export function MCPProxySecurityTab({
         </Grid>
       )}
 
-      <Stack spacing={1.5} width="100%">
-        {/* Success messages hide as soon as the user edits again, but errors
-            must not: a failed save leaves the rows it couldn't commit dirty,
-            which would otherwise swallow the only report of the failure. */}
-        <Collapse in={!!status && (status.severity === "error" || !isDirty)} timeout={300}>
-          {status && (
-            <Alert
-              severity={status.severity}
-              onClose={() => setStatus(null)}
-              sx={{ width: "100%", maxWidth: 480 }}
-            >
-              {status.message}
-            </Alert>
-          )}
-        </Collapse>
-        {/* Sticky so Save stays reachable — confirming an auth-method switch
-            only updates the form, and a Save scrolled out of view left users
-            navigating away thinking the change had applied. */}
-        <Stack
-          direction="row"
-          spacing={1.5}
-          alignItems="center"
-          justifyContent="flex-end"
-          sx={{
-            position: "sticky",
-            bottom: 0,
-            zIndex: 1,
-            py: 1.5,
-            bgcolor: "background.paper",
-            borderTop: 1,
-            borderColor: isDirty ? "divider" : "transparent",
-          }}
+      {/* Success messages hide as soon as the user edits again, but errors
+          must not: a failed save leaves the rows it couldn't commit dirty,
+          which would otherwise swallow the only report of the failure. */}
+      <Collapse in={!!status && (status.severity === "error" || !isDirty)} timeout={300}>
+        {status && (
+          <Alert
+            severity={status.severity}
+            onClose={() => setStatus(null)}
+            sx={{ width: "100%", maxWidth: 480 }}
+          >
+            {status.message}
+          </Alert>
+        )}
+      </Collapse>
+      {/* Sticky so Save stays reachable — confirming an auth-method switch
+          only updates the form, and a Save scrolled out of view left users
+          navigating away thinking the change had applied. */}
+      <Stack
+        direction="row"
+        spacing={1.5}
+        alignItems="center"
+        justifyContent="flex-end"
+        sx={{
+          position: "sticky",
+          bottom: 0,
+          zIndex: 1,
+          py: 1.5,
+          bgcolor: "background.paper",
+          borderTop: 1,
+          borderColor: isDirty ? "divider" : "transparent",
+        }}
+      >
+        {isDirty && (
+          <Typography variant="body2" color="warning.main" sx={{ mr: "auto" }}>
+            You have unsaved changes
+          </Typography>
+        )}
+        <Button
+          variant="outlined"
+          onClick={handleDiscard}
+          disabled={!isDirty || saveInProgress}
         >
-          {isDirty && (
-            <Typography variant="body2" color="warning.main" sx={{ mr: "auto" }}>
-              You have unsaved changes
-            </Typography>
-          )}
-          <Button
-            variant="outlined"
-            onClick={handleDiscard}
-            disabled={!isDirty || saveInProgress}
-          >
-            Discard
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => void handleSave()}
-            disabled={saveInProgress || !isDirty}
-          >
-            {saveInProgress ? "Saving..." : "Save"}
-          </Button>
-        </Stack>
+          Discard
+        </Button>
+        <Button
+          variant="contained"
+          onClick={() => void handleSave()}
+          disabled={saveInProgress || !isDirty}
+        >
+          {saveInProgress ? "Saving..." : "Save"}
+        </Button>
       </Stack>
 
       {orgName && proxyId && (
