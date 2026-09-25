@@ -358,6 +358,18 @@ export function MCPProxySecurityTab({
   // while updates are still in flight.
   const saveInProgress = isUpdating || isSaving;
 
+  // The Save bar is easy to miss on a long page, so warn before a reload or
+  // tab close would silently drop pending edits.
+  useEffect(() => {
+    if (!isDirty) return undefined;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
   const handleDiscard = useCallback(() => {
     if (!config) return;
     const nextType = resolveAuthenticationType(config);
@@ -765,7 +777,29 @@ export function MCPProxySecurityTab({
             </Alert>
           )}
         </Collapse>
-        <Stack direction="row" spacing={1.5} justifyContent="flex-end">
+        {/* Sticky so Save stays reachable — confirming an auth-method switch
+            only updates the form, and a Save scrolled out of view left users
+            navigating away thinking the change had applied. */}
+        <Stack
+          direction="row"
+          spacing={1.5}
+          alignItems="center"
+          justifyContent="flex-end"
+          sx={{
+            position: "sticky",
+            bottom: 0,
+            zIndex: 1,
+            py: 1.5,
+            bgcolor: "background.paper",
+            borderTop: 1,
+            borderColor: isDirty ? "divider" : "transparent",
+          }}
+        >
+          {isDirty && (
+            <Typography variant="body2" color="warning.main" sx={{ mr: "auto" }}>
+              You have unsaved changes
+            </Typography>
+          )}
           <Button
             variant="outlined"
             onClick={handleDiscard}
