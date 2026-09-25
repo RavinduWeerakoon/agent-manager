@@ -6,7 +6,7 @@ Agent Manager records who did what, to which resource, with what outcome. This d
 
 Every state-changing API call, every authorization denial, and every rejected token *attempts* one record. Records are written to **stdout as structured JSON** tagged `log_type=audit`, for the cluster log pipeline to collect.
 
-"Attempts" rather than "produces", because two paths deliberately emit less than one record per event: authentication and internal-surface denials are rate-limited per source (see [Denials](#denials)), and ordinary buffered records are dropped rather than allowed to block a request when the buffer fills. Both are counted and both surface in the trail — a suppressed count rides on the next emitted record, and drops are reported as `system:audit-dropped`. Nothing is silently discarded, but the count is a floor, not an exact tally. The one path with no such allowance is `audit.Begin`, which refuses the operation rather than losing the record (see [Reliability](#reliability)).
+"Attempts" rather than "produces", because two paths deliberately emit less than one record per event: authentication and internal-surface denials are rate-limited per source (see [Denials](#denials)), and ordinary buffered records are dropped rather than allowed to block a request when the buffer fills. Both are counted and both surface in the trail — a suppressed count rides on the next emitted record, and drops are logged as an application error (`audit buffer full; event dropped`, with a running `droppedTotal`). Drops do **not** yet reach the audit trail itself — `system:audit-dropped` is registered but nothing emits it (see [Not yet covered](#not-yet-covered)). The count is a floor, not an exact tally. The one path with no such allowance is `audit.Begin`, which refuses the operation rather than losing the record (see [Reliability](#reliability)).
 
 Coverage comes from two tiers:
 
@@ -93,7 +93,7 @@ Every record carries these fields where they apply; empty fields are omitted.
 | `sourceIp` | The leftmost `X-Forwarded-For` hop, falling back to `X-Real-IP` and then the peer address (`utils.ClientIP`). |
 | `userAgent` | Distinguishes the console from `amctl` from a script. |
 | `correlationId` | Ties the record to the request logs; matches the `x-correlation-id` response header. |
-| `requestMethod` · `requestPath` | HTTP verb and the **route pattern**, never the raw URL. |
+| `requestMethod` · `requestPath` | HTTP verb and the **route pattern**, never the raw URL. The one exception is `authn:failure` on the REST edge: the token is rejected before route matching, so the record carries the URL path — without its query string. |
 | `ouId` · `orgHandle` | Tenant, taken from the token — never from the URL path. |
 | `resourceType` · `resourceId` · `resourceName` | What was acted on. Names are recorded deliberately, including secret names. |
 | `projectName` · `environment` | Scope. For deployments, `environment` is what separates a sandbox push from a production one. |
@@ -102,7 +102,7 @@ Every record carries these fields where they apply; empty fields are omitted.
 | `requiredPermission` | The scope that gated the call, recorded on allow and deny alike. |
 | `details` | Per-action fields. Only keys the action declares survive; the rest are dropped and listed under `_droppedKeys`. |
 
-Every action may also carry the shared detail keys from `audit/schema.go`: `pathParams`, `envelope`, `attemptEventId`, `tool` (MCP surface), `repeatCount`, `suppressedCount` and `_droppedKeys`.
+Every action may also carry the shared detail keys from `audit/schema.go`: `envelope` (a coverage-tier record), `attemptEventId` (a `Begin` outcome record), `tool` (MCP surface), `suppressedCount` (rate-limited `authn:failure`) and `_droppedKeys`. `pathParams` and `repeatCount` are declared but not set by any emit site today.
 
 ### Action taxonomy
 
@@ -112,20 +112,20 @@ Actions read as `<resource>:<verb>`. Most are the route's `rbac.Permission` verb
 - A permission naming a different resource than the operation acts on — `publish-kind` is gated by `agent-kind:create` but acts on an agent.
 - A permission narrower than the effect — `deployments/state` is gated by `agent:suspend` but also resumes.
 
-`requestPath` always holds the **route pattern**, never the raw URL. Queries on it are exact, which is what makes deriving the human-readable action safe.
+`requestPath` holds the **route pattern** on every record a route produced (see the one `authn:failure` exception above). Queries on it are exact, which is what makes deriving the human-readable action safe.
 
 `actionClass` is one of `authn`, `authz`, `credential`, `identity`, `deployment`, `config`, `read`, `system`. `severity` runs 1 (info) to 4 (critical); credential and privilege changes are always 4.
 
 ### Severity 4 — the events worth alerting on
 
-`authz:root-ou-bypass`, `system:audit-dropped`, and everything in `actionClass: credential` or `identity` with a mutating verb — notably `role:*`, `group:*`, `user:*`, `api-key:create` / `:rotate` / `:revoke`, `git-secret:*`, `agent-identity:*`, `agent-token:*`, `gateway-token:*`, `service-account:*`, and `gateway:set-identity-provider` / `:remove-identity-provider` (changing which issuer a gateway trusts changes who can mint tokens it accepts). `api-key:issue-test` is the deliberate exception: console Try-It keys are short-lived, so they rank as a notice.
+`authz:root-ou-bypass`, and everything in `actionClass: credential` or `identity` with a mutating verb — notably `role:*`, `group:*`, `user:*`, `api-key:create` / `:rotate` / `:revoke`, `git-secret:*`, `agent-identity:*`, `agent-token:*`, `gateway-token:*`, `service-account:*`, and `gateway:set-identity-provider` / `:remove-identity-provider` (changing which issuer a gateway trusts changes who can mint tokens it accepts). `api-key:issue-test` is the deliberate exception: console Try-It keys are short-lived, so they rank as a notice.
 
 ## What is never recorded
 
 Two properties are **structural** rather than filtered, which is what makes the coverage tier safe to run on every route:
 
 1. **Request and response bodies are never read.** The secrets that flow through this API — git credentials, client secrets, upstream auth values, user-creation password attributes, and the API keys and tokens returned once on creation — are out of reach of a record, not merely redacted out of one.
-2. **`requestPath` is the route pattern.** Path and query-string leakage is eliminated by construction.
+2. **`requestPath` is the route pattern.** Path and query-string leakage is eliminated by construction. Edge `authn:failure` records, which precede route matching, carry `URL.Path` — the query string is never read.
 
 On top of that, anything a caller attaches by hand passes an **allow-list keyed by action** (`audit/schema.go`). A key nobody declared is dropped and reported under `_droppedKeys`. This is deliberately not a deny-list: a deny-list fails on the field nobody thought of.
 
@@ -244,7 +244,7 @@ Authorization is always enforced: every audited route carries the `requiredPermi
 | Ordinary records (`audit.Record`) | Asynchronous, buffered. On overflow, dropped and counted — never blocks a request. A slow sink must not become an outage. |
 | Security-critical operations (`audit.Begin`) | Synchronous. If the record cannot be written the operation is **refused**, because an untraceable privileged change is worse than a failed one. |
 
-Drops are counted, logged, and reported as `system:audit-dropped`. A trail that silently loses records is worse than one that admits it.
+Drops are counted and logged to the application log, at most once every 30 seconds, with the running total. A trail that silently loses records is worse than one that admits it — which is why emitting `system:audit-dropped` into the trail itself is listed under [Not yet covered](#not-yet-covered).
 
 **The honest limit of "fail-closed" here:** a successful write means the record reached the process's output, not that it reached durable storage. This catches the common failure — the process is running but its sink is broken — but it is not the atomic "change and record commit together" guarantee a same-database write would give. `audit.Begin` therefore writes an *intent* record before an external mutation and an *outcome* record after. A record left at `outcome: "unknown"` means the process died mid-operation; that orphan is deliberate forensic signal, not a defect.
 
@@ -335,7 +335,7 @@ Two of these carry detail worth calling out:
 
 ## Action reference
 
-The explicitly registered actions — the class and severity that drive alerting, and the detail keys each may carry beyond the shared ones. A key not listed is dropped before the record is written. Coverage-tier actions derived from a route's permission and not listed here are classified by `classify` in `audit/actions.go`.
+The explicitly registered actions — the class and severity that drive alerting, and the detail keys each is **permitted** to carry beyond the shared ones. A key not listed is dropped before the record is written. A permitted key is not necessarily set: the [sample records](#sample-records) below show what each emit site actually writes. Coverage-tier actions derived from a route's permission and not listed here are classified by `classify` in `audit/actions.go`.
 
 The registry is the source of truth (`audit/actions.go`, `audit/actions_domain.go`); `audit.RegisteredActions()` enumerates it.
 
@@ -407,8 +407,2511 @@ The registry is the source of truth (`audit/actions.go`, `audit/actions_domain.g
 
 Read actions (`agent:read`, `project:read`, `environment:read`) are declared so every MCP tool can name what it does; they are classified as reads and not recorded.
 
+### Sample records
+
+One record per action, produced by the audit emitter on `main` — `audit.Begin`/`Complete`, `Record`, `RecordSync`, `RecordAncillary`, the coverage envelope and `AuthFailureRecorder` — called with the same options, route pattern and permission as the production emit site named beside it, then serialized by the stdout sink's JSON handler. Each was checked for: class and severity matching the registry, no `_droppedKeys`, and for `Begin` actions an intent record with outcome `unknown` whose `eventId` the outcome record carries as `attemptEventId`. Only the outcome record is shown. Identifiers, names and timestamps are illustrative; every key and the shape of every value is real.
+
+Not shown: the three read actions, which are never recorded, and `system:audit-dropped`, which nothing emits yet.
+
+Where two emit sites share an action, the sample shows the first listed; the others differ as noted.
+
+<details>
+<summary><code>agent-config:update</code> — Record · `services/agent_configuration_service.go:3534`</summary>
+
+Model configs only; MCP-config updates produce the coverage envelope alone.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent-config:update",
+    "actionClass": "config",
+    "severity": 1,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "PUT",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/model-configs/{configId}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent-config",
+    "resourceId": "cfg-2d7a",
+    "resourceName": "gpt-4o-primary",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:update",
+    "details": {
+      "agentName": "checkout-agent",
+      "configName": "gpt-4o-primary",
+      "updatedFields": [
+        "description",
+        "envMappings"
+      ]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent-config:delete</code> — Record · `services/agent_configuration_service.go:3820`</summary>
+
+Model configs only; MCP-config deletes produce the coverage envelope alone.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent-config:delete",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/model-configs/{configId}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent-config",
+    "resourceId": "cfg-2d7a",
+    "resourceName": "gpt-4o-primary",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:delete",
+    "details": {
+      "agentName": "checkout-agent",
+      "configName": "gpt-4o-primary",
+      "environmentCount": 3
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent-identity:provision</code> — Begin + Complete · `controllers/agent_controller.go:1263`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent-identity:provision",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "PUT",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/identities",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent-identity",
+    "resourceId": "checkout-agent",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:update",
+    "details": {
+      "agentName": "checkout-agent",
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "environment": "production"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent-identity:regenerate-secret</code> — Begin + Complete · `controllers/agent_controller.go:1156`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent-identity:regenerate-secret",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/identities",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent-identity",
+    "resourceId": "checkout-agent",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:update",
+    "details": {
+      "agentName": "checkout-agent",
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "environment": "production"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent-identity:retry-provisioning</code> — Begin + Complete · `controllers/agent_controller.go:1329`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent-identity:retry-provisioning",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/identities/retry",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent-identity",
+    "resourceId": "checkout-agent",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:update",
+    "details": {
+      "agentName": "checkout-agent",
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "environment": "production"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent-identity:revoke-secret</code> — Begin + Complete · `controllers/agent_controller.go:1208`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent-identity:revoke-secret",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/identities",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent-identity",
+    "resourceId": "checkout-agent",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:update",
+    "details": {
+      "agentName": "checkout-agent",
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "environment": "production"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent-token:mint</code> — RecordSync · `services/agent_token_manager.go:364`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent-token:mint",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/token",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent",
+    "resourceId": "5b1e7c2a-9d4f-4a3b-8e6c-0f2d1a9b7c34",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "development",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:token-manage",
+    "details": {
+      "agentName": "checkout-agent",
+      "expiresIn": 3600
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent-token:regenerate-tracing</code> — Begin + Complete · `controllers/agent_controller.go:692`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent-token:regenerate-tracing",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/tracing-token/regenerate",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent",
+    "resourceId": "checkout-agent",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "development",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:token-manage",
+    "details": {
+      "agentName": "checkout-agent",
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent:build</code> — Record · `services/agent_manager.go:2938`</summary>
+
+Builds through MCP (`build_agent`) additionally produce a bare wrapper record carrying only `tool`.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent:build",
+    "actionClass": "deployment",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/builds",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent",
+    "resourceId": "5b1e7c2a-9d4f-4a3b-8e6c-0f2d1a9b7c34",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:build",
+    "details": {
+      "agentName": "checkout-agent",
+      "buildName": "checkout-agent-build-42",
+      "commitId": "9f3c2e1"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent:change-deployment-state</code> — Begin + Complete · `controllers/agent_controller.go:887`</summary>
+
+Changes through MCP (`update_deployment_state`) produce a bare wrapper record carrying only `tool`.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent:change-deployment-state",
+    "actionClass": "deployment",
+    "severity": 3,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/deployments/state",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent",
+    "resourceId": "checkout-agent",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:suspend amp:agent:env-non-production",
+    "details": {
+      "agentName": "checkout-agent",
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "environment": "production",
+      "toState": "Undeploy"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent:create</code> — Record · `mcp/tools/helpers.go:195`</summary>
+
+MCP only (`create_external_agent`, `create_internal_agent_python`). REST agent creation is covered by the coverage envelope alone.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent:create",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "mcp",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "claude-code/2.1",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "outcome": "success",
+    "details": {
+      "tool": "create_external_agent"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent:delete</code> — Begin + Complete · `services/agent_manager.go:2646`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent:delete",
+    "actionClass": "config",
+    "severity": 3,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent",
+    "resourceId": "checkout-agent",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:delete",
+    "details": {
+      "agentName": "checkout-agent",
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent:deploy</code> — Begin + Complete · `services/agent_manager.go:3281`</summary>
+
+Deploys through MCP (`deploy_agent`) additionally produce a bare wrapper record carrying only `tool`.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent:deploy",
+    "actionClass": "deployment",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/deployments",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent",
+    "resourceId": "5b1e7c2a-9d4f-4a3b-8e6c-0f2d1a9b7c34",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "development",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:env-non-production",
+    "details": {
+      "agentName": "checkout-agent",
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "environment": "development",
+      "imageId": "registry.example/checkout-agent:9f3c2e1",
+      "isProduction": false
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>agent:promote</code> — Begin + Complete · `services/agent_manager.go:4496`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "agent:promote",
+    "actionClass": "deployment",
+    "severity": 3,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/promote",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "agent",
+    "resourceId": "5b1e7c2a-9d4f-4a3b-8e6c-0f2d1a9b7c34",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:env-non-production",
+    "details": {
+      "agentName": "checkout-agent",
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "environment": "production",
+      "isProduction": true,
+      "sourceEnv": "staging",
+      "targetEnv": "production"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>api-key:create</code> — Begin + Complete · `services/agent_apikey_service.go:189`</summary>
+
+Agent key. Model-config and MCP-config keys (`controllers/agent_configuration_controller.go`) use `ownerType` `model-config` / `mcp-config` and carry no `gatewayCount`; LLM-provider and LLM-proxy keys carry no project or environment.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "api-key:create",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/environments/{envID}/api-keys",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "api-key",
+    "resourceId": "art-71c2",
+    "resourceName": "ci-key",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:api-key-manage",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "gatewayConnected": true,
+      "gatewayCount": 2,
+      "keyName": "ci-key",
+      "ownerName": "checkout-agent",
+      "ownerType": "agent"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>api-key:issue-test</code> — Record · `services/agent_apikey_service.go:365`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "api-key:issue-test",
+    "actionClass": "credential",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/environments/{envID}/api-keys/test",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "api-key",
+    "resourceId": "art-71c2",
+    "resourceName": "test-key-8c1f04b2",
+    "projectName": "payments",
+    "environment": "development",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:api-key-manage",
+    "details": {
+      "expiresAt": "2026-09-25T09:13:37Z",
+      "keyName": "test-key-8c1f04b2",
+      "ownerName": "checkout-agent",
+      "ownerType": "agent",
+      "rotated": false
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>api-key:revoke</code> — Begin + Complete · `services/agent_apikey_service.go:234`</summary>
+
+Agent key; the other owners differ as for `api-key:create`.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "api-key:revoke",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/environments/{envID}/api-keys/{keyName}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "api-key",
+    "resourceId": "art-71c2",
+    "resourceName": "ci-key",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:api-key-manage",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "gatewayCount": 2,
+      "keyName": "ci-key",
+      "ownerName": "checkout-agent",
+      "ownerType": "agent"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>api-key:rotate</code> — Begin + Complete · `services/agent_apikey_service.go:269`</summary>
+
+Agent key; the other owners differ as for `api-key:create`.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "api-key:rotate",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "PUT",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/environments/{envID}/api-keys/{keyName}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "api-key",
+    "resourceId": "art-71c2",
+    "resourceName": "ci-key",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:agent:api-key-manage",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "gatewayConnected": true,
+      "gatewayCount": 2,
+      "keyName": "ci-key",
+      "ownerName": "checkout-agent",
+      "ownerType": "agent"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>api-key:sync</code> — coverage envelope · `middleware/audit_route.go:139 (coverage envelope)`</summary>
+
+No semantic emit: the coverage envelope for the gateway bulk-sync routes, coalesced to one record per gateway per window.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "durationMs": 42,
+    "action": "api-key:sync",
+    "actionClass": "read",
+    "severity": 2,
+    "actorType": "gateway",
+    "actorId": "gw-3c9e",
+    "authMethod": "api-key",
+    "surface": "internal",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "api-platform-gateway/1.0",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "GET",
+    "requestPath": "/llm-providers/api-keys",
+    "outcome": "success",
+    "statusCode": 200,
+    "details": {
+      "envelope": true
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>authn:failure</code> — Record · `audit/authn.go:110`</summary>
+
+REST edge. The internal gateway server records its own (`controllers/gateway_internal_audit.go`) with surface `internal`, actor `gateway` and auth method `api-key`.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "authn:failure",
+    "actionClass": "authn",
+    "severity": 3,
+    "actorType": "anonymous",
+    "authMethod": "jwt-bearer",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "curl/8.4.0",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "GET",
+    "requestPath": "/api/v1/orgs/acme/projects/payments/agents",
+    "outcome": "deny",
+    "statusCode": 401,
+    "details": {
+      "authHeader": true,
+      "reason": "expired"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>authz:deny</code> — Record · `middleware/authorization.go:51`</summary>
+
+REST scope denial. MCP denials (`mcp/tools/authz.go`) carry `tool` and no `grantedScopes`; environment-tier denials (`requireEnvTier`) carry reason `missing-environment-tier-scope`.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "authz:deny",
+    "actionClass": "authz",
+    "severity": 3,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/identities/roles/{roleID}/permissions/add",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "outcome": "deny",
+    "statusCode": 403,
+    "requiredPermission": "amp:role:update",
+    "details": {
+      "grantedScopes": 11,
+      "missingScope": "amp:role:update",
+      "reason": "missing-scope"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>authz:root-ou-bypass</code> — RecordAncillary · `middleware/authorization.go:178`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "authz:root-ou-bypass",
+    "actionClass": "authz",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/git-secrets",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "outcome": "success",
+    "requiredPermission": "amp:git-secret:create",
+    "details": {
+      "rootOUBypass": true
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>gateway-token:revoke</code> — Begin + Complete · `controllers/gateway_controller.go:642`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "gateway-token:revoke",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/gateways/{gatewayID}/tokens/{tokenID}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "gateway",
+    "resourceId": "gw-3c9e",
+    "outcome": "success",
+    "requiredPermission": "amp:gateway:token-manage",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "tokenId": "tok-1f8b"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>gateway-token:rotate</code> — Begin + Complete · `controllers/gateway_controller.go:602`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "gateway-token:rotate",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/gateways/{gatewayID}/tokens",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "gateway",
+    "resourceId": "gw-3c9e",
+    "outcome": "success",
+    "requiredPermission": "amp:gateway:token-manage",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "tokenId": "tok-4a2d"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>gateway:assign-environment</code> — Record · `controllers/gateway_controller.go:430`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "gateway:assign-environment",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/gateways/{gatewayID}/environments/{envID}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "gateway",
+    "resourceId": "gw-3c9e",
+    "environment": "e7a1c3d2-4b5f-4e6a-9c8d-1f2e3a4b5c6d",
+    "outcome": "success",
+    "requiredPermission": "amp:gateway:update",
+    "details": {
+      "environment": "e7a1c3d2-4b5f-4e6a-9c8d-1f2e3a4b5c6d"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>gateway:create</code> — Record · `controllers/gateway_controller.go:204`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "gateway:create",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/gateways",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "gateway",
+    "resourceId": "gw-3c9e",
+    "resourceName": "edge-eu",
+    "outcome": "success",
+    "requiredPermission": "amp:gateway:create",
+    "details": {
+      "gatewayName": "edge-eu",
+      "gatewayType": "egress",
+      "vhost": "edge-eu.example.com"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>gateway:delete</code> — Begin + Complete · `controllers/gateway_controller.go:387`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "gateway:delete",
+    "actionClass": "config",
+    "severity": 3,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/gateways/{gatewayID}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "gateway",
+    "resourceId": "gw-3c9e",
+    "outcome": "success",
+    "requiredPermission": "amp:gateway:delete",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>gateway:push-manifest</code> — Record · `controllers/gateway_internal_controller.go:455`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "gateway:push-manifest",
+    "actionClass": "config",
+    "severity": 1,
+    "actorType": "gateway",
+    "actorId": "gw-3c9e",
+    "authMethod": "api-key",
+    "surface": "internal",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "api-platform-gateway/1.0",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/gateways/{gatewayId}/manifest",
+    "ouId": "ou-9f2",
+    "resourceType": "gateway",
+    "resourceId": "gw-3c9e",
+    "outcome": "success",
+    "details": {
+      "policyCount": 4
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>gateway:remove-identity-provider</code> — Begin + Complete · `controllers/gateway_identity_provider_controller.go:196`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "gateway:remove-identity-provider",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/gateways/{gatewayID}/identity-providers/{name}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "gateway",
+    "resourceId": "gw-3c9e",
+    "resourceName": "gw-3c9e",
+    "outcome": "success",
+    "requiredPermission": "amp:gateway:update",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "identityProviderName": "corp-idp"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>gateway:set-identity-provider</code> — Begin + Complete · `controllers/gateway_identity_provider_controller.go:157`</summary>
+
+`jwksUri` was supplied as `https://svc:s3cret@idp.example.com/oauth2/jwks?key=abc`; userinfo and query are stripped at write time.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "gateway:set-identity-provider",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "PUT",
+    "requestPath": "/orgs/{orgName}/gateways/{gatewayID}/identity-providers/{name}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "gateway",
+    "resourceId": "gw-3c9e",
+    "resourceName": "gw-3c9e",
+    "outcome": "success",
+    "requiredPermission": "amp:gateway:update",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "identityProviderName": "corp-idp",
+      "issuer": "https://idp.example.com",
+      "jwksUri": "https://idp.example.com/oauth2/jwks[redacted-components]",
+      "skipTlsVerify": false
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>gateway:unassign-environment</code> — Record · `controllers/gateway_controller.go:470`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "gateway:unassign-environment",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/gateways/{gatewayID}/environments/{envID}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "gateway",
+    "resourceId": "gw-3c9e",
+    "environment": "e7a1c3d2-4b5f-4e6a-9c8d-1f2e3a4b5c6d",
+    "outcome": "success",
+    "requiredPermission": "amp:gateway:update",
+    "details": {
+      "environment": "e7a1c3d2-4b5f-4e6a-9c8d-1f2e3a4b5c6d"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>gateway:update</code> — Record · `controllers/gateway_controller.go:362`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "gateway:update",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "PUT",
+    "requestPath": "/orgs/{orgName}/gateways/{gatewayID}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "gateway",
+    "resourceId": "gw-3c9e",
+    "outcome": "success",
+    "requiredPermission": "amp:gateway:update"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>git-secret:create</code> — Begin + Complete · `services/git_secret_service.go:79`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "git-secret:create",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/git-secrets",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "git-secret",
+    "resourceId": "github-deploy-key",
+    "resourceName": "github-deploy-key",
+    "outcome": "success",
+    "requiredPermission": "amp:git-secret:create",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "secretType": "basic-auth",
+      "username": "deploy-bot"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>git-secret:delete</code> — Begin + Complete · `services/git_secret_service.go:154`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "git-secret:delete",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/git-secrets/{secretName}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "git-secret",
+    "resourceId": "github-deploy-key",
+    "resourceName": "github-deploy-key",
+    "outcome": "success",
+    "requiredPermission": "amp:git-secret:delete",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>group:add-member</code> — Begin + Complete · `controllers/identity_controller.go:716`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "group:add-member",
+    "actionClass": "identity",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/identities/groups/{groupID}/members/add",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "group",
+    "resourceId": "grp-5e1a",
+    "resourceName": "platform-eng",
+    "outcome": "success",
+    "requiredPermission": "amp:group:update",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "groupName": "platform-eng",
+      "memberCount": 1,
+      "members": [
+        "2b7d9e41-0c3a-4f6e-8d1b-7a9c5e3f2d10"
+      ]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>group:remove-member</code> — Begin + Complete · `controllers/identity_controller.go:780`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "group:remove-member",
+    "actionClass": "identity",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/identities/groups/{groupID}/members/remove",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "group",
+    "resourceId": "grp-5e1a",
+    "resourceName": "platform-eng",
+    "outcome": "success",
+    "requiredPermission": "amp:group:update",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "groupName": "platform-eng",
+      "memberCount": 1,
+      "members": [
+        "2b7d9e41-0c3a-4f6e-8d1b-7a9c5e3f2d10"
+      ]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>monitor-score:publish</code> — Record · `controllers/monitor_scores_publisher_controller.go:89`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "monitor-score:publish",
+    "actionClass": "config",
+    "severity": 1,
+    "actorType": "service",
+    "actorId": "amp-publisher-eval",
+    "authMethod": "publisher-client",
+    "actorTokenId": "jti-51ab",
+    "surface": "publisher",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amp-evaluation-job/1.0",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/publisher/monitors/{monitorId}/runs/{runId}/scores",
+    "resourceType": "monitor-run",
+    "resourceId": "run-8d21",
+    "resourceName": "run-8d21",
+    "outcome": "success",
+    "details": {
+      "monitorId": "mon-6b3f",
+      "runId": "run-8d21",
+      "scoreCount": 24
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>monitor:create</code> — Record · `services/monitor_manager.go:344`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "monitor:create",
+    "actionClass": "config",
+    "severity": 1,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/monitors",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "monitor",
+    "resourceId": "mon-6b3f",
+    "resourceName": "latency-slo",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:monitor:create",
+    "details": {
+      "agentName": "checkout-agent",
+      "monitorName": "latency-slo",
+      "monitorType": "scheduled"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>monitor:delete</code> — Record · `services/monitor_manager.go:800`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "monitor:delete",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/monitors/{monitorName}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "monitor",
+    "resourceId": "mon-6b3f",
+    "resourceName": "latency-slo",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:monitor:delete",
+    "details": {
+      "agentName": "checkout-agent",
+      "monitorName": "latency-slo"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>monitor:rerun</code> — Record · `services/monitor_manager.go:1064`</summary>
+
+The route derives `monitor:execute`, so a failed request's envelope is labelled `monitor:execute`.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "monitor:rerun",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/monitors/{monitorName}/runs/{runId}/rerun",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "monitor",
+    "resourceId": "mon-6b3f",
+    "resourceName": "latency-slo",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:monitor:execute",
+    "details": {
+      "agentName": "checkout-agent",
+      "monitorName": "latency-slo",
+      "runId": "run-8d21"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>monitor:run-failed</code> — Record · `services/monitor_scheduler.go:226`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "monitor:run-failed",
+    "actionClass": "system",
+    "severity": 3,
+    "actorType": "system",
+    "actorId": "system:monitor-scheduler",
+    "surface": "system",
+    "correlationId": "-",
+    "ouId": "ou-9f2",
+    "resourceType": "monitor",
+    "resourceId": "mon-6b3f",
+    "resourceName": "latency-slo",
+    "outcome": "failure",
+    "errorMessage": "evaluation job could not be scheduled",
+    "details": {
+      "monitorName": "latency-slo",
+      "reason": "execute-failed"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>monitor:start</code> — Record · `services/monitor_manager.go:931`</summary>
+
+The route derives `monitor:execute`, so a failed request's envelope is labelled `monitor:execute`.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "monitor:start",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/monitors/{monitorName}/start",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "monitor",
+    "resourceId": "mon-6b3f",
+    "resourceName": "latency-slo",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:monitor:execute",
+    "details": {
+      "agentName": "checkout-agent",
+      "monitorName": "latency-slo"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>monitor:stop</code> — Record · `services/monitor_manager.go:875`</summary>
+
+The route derives `monitor:execute`, so a failed request's envelope is labelled `monitor:execute`.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "monitor:stop",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/monitors/{monitorName}/stop",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "monitor",
+    "resourceId": "mon-6b3f",
+    "resourceName": "latency-slo",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:monitor:execute",
+    "details": {
+      "agentName": "checkout-agent",
+      "monitorName": "latency-slo"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>monitor:update</code> — Record · `services/monitor_manager.go:723`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "monitor:update",
+    "actionClass": "config",
+    "severity": 1,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "PATCH",
+    "requestPath": "/orgs/{orgName}/projects/{projName}/agents/{agentName}/monitors/{monitorName}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "monitor",
+    "resourceId": "mon-6b3f",
+    "resourceName": "latency-slo",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:monitor:update",
+    "details": {
+      "agentName": "checkout-agent",
+      "monitorName": "latency-slo"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>project:create</code> — Record · `mcp/tools/helpers.go:195`</summary>
+
+MCP only (`create_project`). REST project creation is covered by the coverage envelope alone.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "project:create",
+    "actionClass": "config",
+    "severity": 2,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "mcp",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "claude-code/2.1",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "outcome": "success",
+    "details": {
+      "tool": "create_project"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>project:delete</code> — Begin + Complete · `services/infra_resource_manager.go:298`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "project:delete",
+    "actionClass": "config",
+    "severity": 3,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/projects/{projName}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "project",
+    "resourceId": "payments",
+    "resourceName": "payments",
+    "projectName": "payments",
+    "outcome": "success",
+    "requiredPermission": "amp:project:delete",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "projectName": "payments"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>role:assign</code> — Begin + Complete · `controllers/identity_controller.go:1291`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "role:assign",
+    "actionClass": "identity",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/identities/roles/{roleID}/assignees/add",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "role",
+    "resourceId": "role-9a4c",
+    "resourceName": "sre",
+    "outcome": "success",
+    "requiredPermission": "amp:role:update",
+    "details": {
+      "assigneeCount": 1,
+      "assigneeTypes": [
+        "user"
+      ],
+      "assignees": [
+        "2b7d9e41-0c3a-4f6e-8d1b-7a9c5e3f2d10"
+      ],
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "roleName": "sre"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>role:grant-permission</code> — Begin + Complete · `controllers/identity_controller.go:1176`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "role:grant-permission",
+    "actionClass": "identity",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/identities/roles/{roleID}/permissions/add",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "role",
+    "resourceId": "role-9a4c",
+    "resourceName": "sre",
+    "outcome": "success",
+    "requiredPermission": "amp:role:update",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "permissionCount": 1,
+      "permissions": [
+        "amp:agent:env-production"
+      ],
+      "resourceServerId": "rs-amp",
+      "roleName": "sre"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>role:revoke-permission</code> — Begin + Complete · `controllers/identity_controller.go:1235`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "role:revoke-permission",
+    "actionClass": "identity",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/identities/roles/{roleID}/permissions/remove",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "role",
+    "resourceId": "role-9a4c",
+    "resourceName": "sre",
+    "outcome": "success",
+    "requiredPermission": "amp:role:update",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "permissionCount": 1,
+      "permissions": [
+        "amp:agent:env-production"
+      ],
+      "resourceServerId": "rs-amp",
+      "roleName": "sre"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>role:unassign</code> — Begin + Complete · `controllers/identity_controller.go:1347`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "role:unassign",
+    "actionClass": "identity",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/identities/roles/{roleID}/assignees/remove",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "role",
+    "resourceId": "role-9a4c",
+    "resourceName": "sre",
+    "outcome": "success",
+    "requiredPermission": "amp:role:update",
+    "details": {
+      "assigneeCount": 1,
+      "assigneeTypes": [
+        "user"
+      ],
+      "assignees": [
+        "2b7d9e41-0c3a-4f6e-8d1b-7a9c5e3f2d10"
+      ],
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "roleName": "sre"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>service-account:configure</code> — Begin + Complete · `controllers/environment_controller.go:426`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "service-account:configure",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "PUT",
+    "requestPath": "/orgs/{orgName}/environments/{envID}/thunder-system-client",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "service-account",
+    "resourceId": "production",
+    "resourceName": "production",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:org:manage-service-account",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "clientId": "amp-sys-client-prod",
+      "environment": "production"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>service-account:remove</code> — Begin + Complete · `controllers/environment_controller.go:462`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "service-account:remove",
+    "actionClass": "credential",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/environments/{envID}/thunder-system-client",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "service-account",
+    "resourceId": "production",
+    "resourceName": "production",
+    "environment": "production",
+    "outcome": "success",
+    "requiredPermission": "amp:org:manage-service-account",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "environment": "production"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>system:agent-identity-exhausted</code> — Record · `services/agent_thunder_provisioning_service.go:876`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "system:agent-identity-exhausted",
+    "actionClass": "credential",
+    "severity": 3,
+    "actorType": "system",
+    "actorId": "system:agent-thunder-reconciler",
+    "onBehalfOf": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "surface": "system",
+    "correlationId": "-",
+    "ouId": "ou-9f2",
+    "resourceType": "agent-identity",
+    "resourceId": "checkout-agent",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "details": {
+      "agentName": "checkout-agent",
+      "environment": "production",
+      "reason": "retries-exhausted"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>system:agent-identity-provisioned</code> — Record · `services/agent_thunder_provisioning_service.go:816`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "system:agent-identity-provisioned",
+    "actionClass": "credential",
+    "severity": 2,
+    "actorType": "system",
+    "actorId": "system:agent-thunder-reconciler",
+    "onBehalfOf": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "surface": "system",
+    "correlationId": "-",
+    "ouId": "ou-9f2",
+    "resourceType": "agent-identity",
+    "resourceId": "checkout-agent",
+    "resourceName": "checkout-agent",
+    "projectName": "payments",
+    "environment": "production",
+    "outcome": "success",
+    "details": {
+      "agentName": "checkout-agent",
+      "clientId": "agt-checkout-prod",
+      "environment": "production"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>system:startup</code> — RecordAncillary · `app/app.go:345`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "system:startup",
+    "actionClass": "system",
+    "severity": 2,
+    "actorType": "system",
+    "actorId": "system:agent-manager-service",
+    "surface": "system",
+    "correlationId": "-",
+    "outcome": "success",
+    "details": {
+      "sinks": [
+        "stdout"
+      ]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>user:create</code> — Begin + Complete · `controllers/identity_controller.go:198`</summary>
+
+The request's attribute map held `username`, `email`, `password` and `department`; only the key names reach the record.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "user:create",
+    "actionClass": "identity",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/identities/users",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "user",
+    "resourceId": "carol",
+    "resourceName": "carol",
+    "outcome": "success",
+    "requiredPermission": "amp:org:invite-member",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "attributeCount": 4,
+      "attributeKeys": [
+        "department",
+        "email",
+        "password",
+        "username"
+      ],
+      "containsSensitiveKey": true,
+      "userType": "employee",
+      "username": "carol"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>user:delete</code> — Begin + Complete · `controllers/identity_controller.go:308`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "user:delete",
+    "actionClass": "identity",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "DELETE",
+    "requestPath": "/orgs/{orgName}/identities/users/{userID}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "user",
+    "resourceId": "2b7d9e41-0c3a-4f6e-8d1b-7a9c5e3f2d10",
+    "resourceName": "carol",
+    "outcome": "success",
+    "requiredPermission": "amp:org:remove-member",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "username": "carol"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>user:invite</code> — Begin + Complete · `controllers/identity_controller.go:436`</summary>
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "action": "user:invite",
+    "actionClass": "identity",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "POST",
+    "requestPath": "/orgs/{orgName}/identities/users/invite",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "resourceType": "user",
+    "resourceId": "dave@example.com",
+    "resourceName": "dave@example.com",
+    "outcome": "success",
+    "requiredPermission": "amp:org:invite-member",
+    "details": {
+      "attemptEventId": "3f2c9a1e-5b7d-4e8f-a0c6-1d9b2e4f7a35",
+      "email": "dave@example.com"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>user:update</code> — coverage envelope · `middleware/audit_route.go:139 (coverage envelope)`</summary>
+
+No semantic emit: the coverage envelope for the route.
+
+```json
+{
+  "log_type": "audit",
+  "event": {
+    "eventId": "87b3970f-c1e4-4df4-befd-9dc02834dcfc",
+    "schemaVersion": 1,
+    "occurredAt": "2026-09-25T08:13:37Z",
+    "durationMs": 42,
+    "action": "user:update",
+    "actionClass": "identity",
+    "severity": 4,
+    "actorType": "user",
+    "actorId": "8c1f04b2-7e39-4a6d-9f5b-2d0ae83c1147",
+    "actorOuId": "ou-9f2",
+    "authMethod": "jwt-bearer",
+    "actorTokenId": "jti-7c1e",
+    "surface": "api",
+    "sourceIp": "203.0.113.77",
+    "userAgent": "amctl/1.2.3",
+    "correlationId": "c0ffee-4d2a-9b1e",
+    "requestMethod": "PUT",
+    "requestPath": "/orgs/{orgName}/identities/users/{userID}",
+    "ouId": "ou-9f2",
+    "orgHandle": "acme",
+    "outcome": "success",
+    "statusCode": 200,
+    "requiredPermission": "amp:org:invite-member",
+    "details": {
+      "envelope": true
+    }
+  }
+}
+```
+
+</details>
+
 ## Not yet covered
 
 These surfaces install the recorder but do not yet emit semantic events; their absence is a real gap in coverage today:
 
-- **Thunder's own events** — see the authentication gap above. This is the one gap that cannot be closed from this repository, and it is the only remaining hole in coverage.
+- **Thunder's own events** — see the authentication gap above. This is the one gap that cannot be closed from this repository.
+- **`system:audit-dropped`** — registered, but the recorder only logs drops to the application log; no record reaches the trail.
+- **`thunder-url:set` / `:delete`** — emitted (fail-closed) but not registered, so they are classified by heuristic (`config`, info / notice) and their `handle` and `url` details are dropped into `_droppedKeys`.
