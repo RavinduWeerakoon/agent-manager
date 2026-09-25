@@ -231,6 +231,11 @@ type OpenChoreoConfig struct {
 	// reserved for internal use and never surfaced as user labels in agent
 	// API responses.
 	SystemLabelKeyPrefixes []string
+	// ResourceLabels are stamped on every Component and ReleaseBinding Agent
+	// Manager writes. Not read from the environment: a deployment injects them
+	// through app.Options.ResourceLabels. Their keys are treated as system
+	// labels, so they are never surfaced or replaced as user labels.
+	ResourceLabels map[string]string
 }
 
 // GitHubConfig holds GitHub API configuration

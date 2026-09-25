@@ -42,6 +42,7 @@ func (c *openChoreoClient) CreateComponent(ctx context.Context, ouID, projectNam
 	if err != nil {
 		return fmt.Errorf("failed to build component request: %w", err)
 	}
+	createComponentReqBody.Metadata.Labels = c.withResourceLabels(createComponentReqBody.Metadata.Labels)
 
 	resp, err := c.ocClient.CreateComponentWithResponse(ctx, namespaceName, createComponentReqBody)
 	if err != nil {
@@ -776,6 +777,7 @@ func (c *openChoreoClient) UpdateEnvResourceConfigs(ctx context.Context, ouID, p
 	}
 
 	// Update the release binding
+	releaseBinding.Metadata.Labels = c.withResourceLabels(releaseBinding.Metadata.Labels)
 	updateResp, err := c.ocClient.UpdateReleaseBindingWithResponse(ctx, namespaceName, bindingName, *releaseBinding)
 	if err != nil {
 		return fmt.Errorf("failed to update release binding: %w", err)
@@ -1952,6 +1954,7 @@ func (c *openChoreoClient) UpdateReleaseBindingEnvVars(ctx context.Context, ouID
 	// If pods are not restarted after env var updates, revisit the OpenChoreo API spec.
 	(*releaseBinding.Spec.ComponentTypeEnvironmentConfigs)["restartedAt"] = time.Now().Format(time.RFC3339)
 
+	releaseBinding.Metadata.Labels = c.withResourceLabels(releaseBinding.Metadata.Labels)
 	updateResp, err := c.ocClient.UpdateReleaseBindingWithResponse(ctx, namespaceName, bindingName, *releaseBinding)
 	if err != nil {
 		return fmt.Errorf("failed to update release binding: %w", err)
@@ -2130,6 +2133,7 @@ func (c *openChoreoClient) RemoveReleaseBindingEnvVars(ctx context.Context, ouID
 	}
 	(*releaseBinding.Spec.ComponentTypeEnvironmentConfigs)["restartedAt"] = time.Now().Format(time.RFC3339)
 
+	releaseBinding.Metadata.Labels = c.withResourceLabels(releaseBinding.Metadata.Labels)
 	updateResp, err := c.ocClient.UpdateReleaseBindingWithResponse(ctx, namespaceName, bindingName, *releaseBinding)
 	if err != nil {
 		return fmt.Errorf("failed to update release binding: %w", err)
@@ -2242,6 +2246,7 @@ func (c *openChoreoClient) ReplaceReleaseBindingEnvVars(ctx context.Context, ouI
 	}
 	(*releaseBinding.Spec.ComponentTypeEnvironmentConfigs)["restartedAt"] = time.Now().Format(time.RFC3339)
 
+	releaseBinding.Metadata.Labels = c.withResourceLabels(releaseBinding.Metadata.Labels)
 	updateResp, err := c.ocClient.UpdateReleaseBindingWithResponse(ctx, namespaceName, bindingName, *releaseBinding)
 	if err != nil {
 		return fmt.Errorf("failed to update release binding: %w", err)
