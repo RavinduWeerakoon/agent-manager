@@ -162,6 +162,8 @@ export type MCPProxySecurityTabProps = {
   isLoading?: boolean;
   onUpdate: (fields: Partial<MCPEndpointConfig>) => Promise<MCPProxy>;
   isUpdating: boolean;
+  /** Reports unsaved edits so the parent can guard tab, endpoint and page switches. */
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 export function MCPProxySecurityTab({
@@ -173,6 +175,7 @@ export function MCPProxySecurityTab({
   isLoading = false,
   onUpdate,
   isUpdating,
+  onDirtyChange,
 }: MCPProxySecurityTabProps) {
   const [authenticationType, setAuthenticationType] =
     useState<AuthenticationType>("apiKey");
@@ -357,6 +360,13 @@ export function MCPProxySecurityTab({
   // Gates every control a save touches, so no edit or second Save can land
   // while updates are still in flight.
   const saveInProgress = isUpdating || isSaving;
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  // Unmounting drops the edits, so stop the parent guarding for them.
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   // The Save bar is easy to miss on a long page, so warn before a reload or
   // tab close would silently drop pending edits.
