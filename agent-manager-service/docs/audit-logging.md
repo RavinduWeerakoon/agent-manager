@@ -2910,7 +2910,7 @@ No semantic emit: the coverage envelope for the route.
 
 ## Not yet covered
 
-These surfaces install the recorder but do not yet emit semantic events; their absence is a real gap in coverage today:
+Semantic-event coverage is incomplete, not absent, in these places: some events are never emitted, and others are emitted but not registered, so they lack a detail schema. Each is a real gap in coverage today:
 
 - **Thunder's own events** — see the authentication gap above. This is the one gap that cannot be closed from this repository.
 - **`system:audit-dropped`** — registered, but the recorder only logs drops to the application log; no record reaches the trail.
