@@ -16,9 +16,10 @@
  * under the License.
  */
 
-import type {
-  EvaluatorConfigParam,
-  EvaluatorResponse,
+import {
+  type EvaluatorConfigParam,
+  type EvaluatorResponse,
+  INPUT_LIMITS,
 } from "@agent-management-platform/types";
 import {
   DrawerWrapper,
@@ -297,6 +298,7 @@ function ConfigParamField({
               alignItems="center"
             >
               <TextField
+                slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.VALUE } }}
                 fullWidth
                 value={entryValue}
                 placeholder={`Value ${index + 1}`}
@@ -360,6 +362,7 @@ function ConfigParamField({
     return (
       <Form.ElementWrapper label={labelWithRequired} name={key}>
         <TextField
+          slotProps={{ htmlInput: { maxLength: INPUT_LIMITS.VALUE } }}
           value={textValue}
           required={required}
           error={!!error}
