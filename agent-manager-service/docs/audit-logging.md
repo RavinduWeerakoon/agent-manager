@@ -6,7 +6,7 @@ Agent Manager records who did what, to which resource, with what outcome. This d
 
 Every state-changing API call, every authorization denial, and every rejected token *attempts* one record. Records are written to **stdout as structured JSON** tagged `log_type=audit`, for the cluster log pipeline to collect.
 
-"Attempts" rather than "produces", because two paths deliberately emit less than one record per event: authentication and internal-surface denials are rate-limited per source (see [Denials](#denials)), and ordinary buffered records are dropped rather than allowed to block a request when the buffer fills. Both are counted and both surface in the trail — a suppressed count rides on the next emitted record, and drops are logged as an application error (`audit buffer full; event dropped`, with a running `droppedTotal`). Drops do **not** yet reach the audit trail itself — `system:audit-dropped` is registered but nothing emits it (see [Not yet covered](#not-yet-covered)). The count is a floor, not an exact tally. The one path with no such allowance is `audit.Begin`, which refuses the operation rather than losing the record (see [Reliability](#reliability)).
+"Attempts" rather than "produces", because two paths deliberately emit less than one record per event: authentication and internal-surface denials are rate-limited per source (see [Denials](#denials)), and ordinary buffered records are dropped rather than allowed to block a request when the buffer fills. The two end up in different places. Suppressed JWT authentication failures are reported in the trail: their count rides on the next emitted `authn:failure` record as `suppressedCount` (repeats on the internal surface are suppressed without a count). Buffer drops are counted and logged only to the application log (`audit buffer full; event dropped`, with a running `droppedTotal`) — they do **not** reach the audit trail, because `system:audit-dropped` is registered but nothing emits it (see [Not yet covered](#not-yet-covered)). Either way, the record count is a floor, not an exact tally. The one path with no such allowance is `audit.Begin`, which refuses the operation rather than losing the record (see [Reliability](#reliability)).
 
 Coverage comes from two tiers:
 
@@ -125,7 +125,7 @@ Actions read as `<resource>:<verb>`. Most are the route's `rbac.Permission` verb
 Two properties are **structural** rather than filtered, which is what makes the coverage tier safe to run on every route:
 
 1. **Request and response bodies are never read.** The secrets that flow through this API — git credentials, client secrets, upstream auth values, user-creation password attributes, and the API keys and tokens returned once on creation — are out of reach of a record, not merely redacted out of one.
-2. **`requestPath` is the route pattern.** Path and query-string leakage is eliminated by construction. Edge `authn:failure` records, which precede route matching, carry `URL.Path` — the query string is never read.
+2. **`requestPath` is the route pattern for matched requests.** Once a route has matched, path and query-string leakage is eliminated by construction. Edge `authn:failure` records precede route matching and carry the request's `URL.Path` after generic log sanitization, so concrete path segments (org, project, agent names) may remain — but the query string is never read.
 
 On top of that, anything a caller attaches by hand passes an **allow-list keyed by action** (`audit/schema.go`). A key nobody declared is dropped and reported under `_droppedKeys`. This is deliberately not a deny-list: a deny-list fails on the field nobody thought of.
 
@@ -133,7 +133,7 @@ Where a secret must be referenced, `audit.SecretRef` stores a SHA-256 prefix plu
 
 **URLs are reduced to scheme, host and path.** A URL is the one declared value that can hold a credential in its own syntax — RFC 3986 userinfo (`https://user:pass@idp.example/jwks`) or a token in the query. A detail declared `KindURL` has its userinfo, query and fragment removed before the record is written, and a `[redacted-components]` marker says something was there. This is enforced at redaction, not at the emit site, so it cannot be forgotten by the next caller; a test fails if a URL-valued detail is declared as anything else.
 
-**User attribute values are never recorded.** The user-invite and user-creation APIs take a free-form attribute map that is known to carry passwords. Records hold only the key names (`attributeKeys`), a count (`attributeCount`), and a flag when a key looks credential-shaped (`containsSensitiveKey`) — see `audit.AttributeKeySummary`.
+**The free-form attribute summary never records attribute values.** The user-creation API takes a free-form attribute map that is known to carry passwords. For `user:create`, `username` is copied explicitly into `details.username` and used as the resource id and name; the rest of the attribute map is represented only by its key names (`attributeKeys`), a count (`attributeCount`), and a flag when a key looks credential-shaped (`containsSensitiveKey`) — see `audit.AttributeKeySummary`.
 
 **Authentication failures carry no token material** — only a classified reason (see [The authentication gap](#the-authentication-gap)).
 
