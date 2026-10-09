@@ -42,16 +42,11 @@ type LoginOptions struct {
 	ClientID     string
 	ClientSecret string
 	AuthServer   string
-	// Some authorization servers only issue
-	// permission scopes for a request bound to a resource server,
-	Resource    string
-	IO          *iostreams.IOStreams
-	OpenBrowser func(string) error
+	Resource     string
+	IO           *iostreams.IOStreams
+	OpenBrowser  func(string) error
 }
 
-// ClientCredentialsResourceParams returns the token-request parameters that carry the
-// resource indicator for a client_credentials grant, or nil when there is none. That
-// grant has no authorize step, so the token request is the only place it can go.
 func ClientCredentialsResourceParams(resource string) url.Values {
 	if resource == "" {
 		return nil
@@ -144,7 +139,6 @@ func loginPKCE(ctx context.Context, opts LoginOptions) (*config.Instance, error)
 	if openBrowser == nil {
 		openBrowser = browser.Open
 	}
-
 
 	var authParams []oauth2.AuthCodeOption
 	if opts.Resource != "" {

@@ -19,7 +19,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"time"
 
@@ -58,13 +57,13 @@ type LoginOptions struct {
 	ClientID     string
 	ClientSecret string
 	AuthServer   string
-	Resource     string
 	OpenBrowser  func(string) error
 
 	// Cloud targets Agent Manager on WSO2 Cloud instead of URL; Getenv is consulted for
 	// the gateway override (see the cloud package).
-	Cloud  bool
-	Getenv func(string) string
+	Cloud    bool
+	Getenv   func(string) string
+	Resource string
 }
 
 func NewLoginCmd(f *cmdutil.Factory) *cobra.Command {
@@ -89,7 +88,6 @@ func NewLoginCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&opts.ClientID, "client-id", "", "OAuth client ID (default \"amctl\" for interactive login)")
 	cmd.Flags().StringVar(&opts.ClientSecret, "client-secret", "", "OAuth client secret; when set, uses client_credentials grant instead of browser login")
 	cmd.Flags().StringVar(&opts.AuthServer, "auth-server", "", "Authorization server base URL; skips OAuth metadata discovery")
-	cmd.Flags().StringVar(&opts.Resource, "resource", "", "RFC 8707 resource indicator naming the API the token is for, e.g. urn:wso2:amp")
 	cmd.Flags().BoolVar(&opts.Cloud, "cloud", false, fmt.Sprintf("Log in to Agent Manager on WSO2 Cloud (production, or the gateway in $%s)", cloud.GatewayURLEnv))
 
 	return cmd
@@ -104,14 +102,7 @@ func runLogin(ctx context.Context, opts *LoginOptions) error {
 			return render.Error(opts.IO, render.Scope{}, cmdutil.FlagErrorf("--url cannot be used with --cloud"))
 		}
 		opts.URL = cloud.APIURL(opts.Getenv)
-		if opts.Resource == "" {
-			opts.Resource = cloud.Resource
-		}
-	}
-	if opts.Resource != "" {
-		if u, err := url.Parse(opts.Resource); err != nil || !u.IsAbs() {
-			return render.Error(opts.IO, render.Scope{}, cmdutil.FlagErrorf("--resource must be an absolute URI, got %q", opts.Resource))
-		}
+		opts.Resource = cloud.Resource
 	}
 	cfg, err := opts.Config()
 	if err != nil {
