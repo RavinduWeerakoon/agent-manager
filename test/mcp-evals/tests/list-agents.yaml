@@ -15,6 +15,12 @@
         rubric: >-
           FAIL if no list_agents or list_project_agent_pairs call has "isError" false, or if the agent listed agents
           per project with list_agents and skipped a project that list_projects returned.
-          Otherwise PASS if the reply names every agent that the tool results contain, says which project each belongs to,
-          and names no agent the tool results do not contain. If the tool results contain no agents, PASS only if
+          The tool results are paged; judge only against the pages actually returned and do not treat them as proof that
+          the listing is complete. A list_agents result is partial when its "total" is greater than its offset plus the
+          number of agents it returned.
+          FAIL if a returned page is partial and the reply presents the agents as the full list instead of saying there are
+          more, unless a later call fetched the remaining pages.
+          FAIL if the reply says there are no agents when the only empty results were pages after the first, or were partial.
+          Otherwise PASS if the reply names every agent in the returned pages, says which project each belongs to,
+          and names no agent the tool results do not contain. If the returned first pages contain no agents, PASS only if
           the reply says there are none. FAIL otherwise.
