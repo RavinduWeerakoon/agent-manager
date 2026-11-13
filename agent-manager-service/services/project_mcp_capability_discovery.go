@@ -31,11 +31,11 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/wso2/agent-manager/agent-manager-service/clients/thundersvc"
 	"github.com/wso2/agent-manager/agent-manager-service/config"
 	"github.com/wso2/agent-manager/agent-manager-service/models"
 	"github.com/wso2/agent-manager/agent-manager-service/repositories"
 	"github.com/wso2/agent-manager/agent-manager-service/utils"
-	"github.com/wso2/agent-manager/agent-manager-service/utils/ssrf"
 )
 
 // A project MCP proxy binding whose caller sent no capabilities has them discovered by AMS
@@ -79,11 +79,9 @@ type projectMCPCapabilityDiscoveryService struct {
 	discoveries repositories.MCPCapabilityDiscoveryRepository
 	bindings    *ProjectMCPProxyService
 	probe       MCPCapabilityProber
-	// probeUpstream probes an MCP server at its own URL, which its owner gave, so it is SSRF-guarded.
-	probeUpstream MCPCapabilityProber
-	logger        *slog.Logger
-	stopCh        chan struct{}
-	stopOnce      sync.Once
+	logger      *slog.Logger
+	stopCh      chan struct{}
+	stopOnce    sync.Once
 
 	attemptTimeout time.Duration
 	batchBudget    time.Duration
@@ -96,18 +94,7 @@ func NewProjectMCPCapabilityDiscoveryService(
 	discoveries repositories.MCPCapabilityDiscoveryRepository, bindings *ProjectMCPProxyService, logger *slog.Logger,
 ) ProjectMCPCapabilityDiscoveryService {
 	client := newMCPDiscoveryClient(config.GetConfig().A2ACardFetchDialAddr)
-	s := newProjectMCPCapabilityDiscoveryService(discoveries, bindings, newMCPDiscoveryProber(client, logger), logger)
-	s.probeUpstream = newMCPDiscoveryProber(newMCPUpstreamDiscoveryClient(), logger)
-	return s
-}
-
-// newMCPUpstreamDiscoveryClient is the client that probes an MCP server at its upstream URL.
-func newMCPUpstreamDiscoveryClient() *http.Client {
-	client := ssrf.NewClient(mcpRequestTimeout)
-	client.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}
-	return client
+	return newProjectMCPCapabilityDiscoveryService(discoveries, bindings, newMCPDiscoveryProber(client, logger), logger)
 }
 
 // newMCPDiscoveryClient is the probe's HTTP client. It is not the SSRF-guarded one: the URL is built by AMS from a
@@ -140,12 +127,11 @@ func newProjectMCPCapabilityDiscoveryService(
 	probe MCPCapabilityProber, logger *slog.Logger,
 ) *projectMCPCapabilityDiscoveryService {
 	return &projectMCPCapabilityDiscoveryService{
-		discoveries:   discoveries,
-		bindings:      bindings,
-		probe:         probe,
-		probeUpstream: probe,
-		logger:        logger,
-		stopCh:        make(chan struct{}),
+		discoveries: discoveries,
+		bindings:    bindings,
+		probe:       probe,
+		logger:      logger,
+		stopCh:      make(chan struct{}),
 
 		attemptTimeout: mcpDiscoveryAttemptTimeout,
 		batchBudget:    mcpDiscoveryBatchBudget,
@@ -241,10 +227,11 @@ func (s *projectMCPCapabilityDiscoveryService) attempt(
 	if err != nil {
 		return nil, err
 	}
-	if target.upstream {
-		info, err := s.probeUpstream(ctx, target.publicURL, target.headerName, target.headerValue)
+	if target.headerValue != "" {
+		// An identity token, valid as soon as it is issued: a 401 is not waited out.
+		info, err := s.probe(ctx, target.publicURL, target.headerName, target.headerValue)
 		if err != nil {
-			return nil, fmt.Errorf("failed to list the MCP server's capabilities at its upstream %s: %w",
+			return nil, fmt.Errorf("failed to list the MCP server's capabilities at %s: %w",
 				target.publicURL, redactSecret(err, target.headerValue))
 		}
 		return normalizeDiscoveredCapabilities(info)
@@ -427,9 +414,7 @@ type mcpDiscoveryTarget struct {
 	artifact  string
 	publicURL string
 	security  *models.SecurityConfig
-	// upstream marks a target probed at the MCP server's own URL instead of through the gateway (publicURL is then
-	// the upstream URL), with the binding's upstream credential in headerName/headerValue when it has one.
-	upstream    bool
+	// headerName/headerValue carry an Agent Identity binding's access token; empty for any other binding.
 	headerName  string
 	headerValue string
 }
@@ -544,37 +529,57 @@ func (s *ProjectMCPProxyService) discoveryTarget(ctx context.Context, ouID strin
 		}
 		return nil, fmt.Errorf("the binding is not deployed (%s)", status)
 	}
-	security := endpoint.Configuration.Security
-	if security != nil && (security.Enabled == nil || *security.Enabled) && !security.RequiresAPIKey() {
-		return s.upstreamDiscoveryTarget(proxy, endpoint, ee)
-	}
 	if resp.PublicURL == "" {
 		return nil, fmt.Errorf("the binding's gateway has no public URL")
 	}
-	return &mcpDiscoveryTarget{artifact: ee.ArtifactUUID.String(), publicURL: resp.PublicURL, security: security}, nil
+	security := endpoint.Configuration.Security
+	target := &mcpDiscoveryTarget{artifact: ee.ArtifactUUID.String(), publicURL: resp.PublicURL, security: security}
+	if security == nil || (security.Enabled != nil && !*security.Enabled) || security.RequiresAPIKey() {
+		return target, nil
+	}
+	if !mcpIdentityEnabled(security) {
+		return nil, &mcpDiscoveryPermanentError{
+			reason: "the binding is secured with a scheme AMS cannot authenticate to; send capabilities with the binding",
+		}
+	}
+	token, err := s.discoveryIdentityToken(ctx, ouID, proxy, ee, resp.EnvironmentName)
+	if err != nil {
+		return nil, err
+	}
+	target.headerName, target.headerValue = "Authorization", "Bearer "+token
+	return target, nil
 }
 
-// upstreamDiscoveryTarget is the target of a binding whose gateway takes only a scheme AMS cannot get a credential
-// for (Agent Identity)
-func (s *ProjectMCPProxyService) upstreamDiscoveryTarget(
-	proxy *models.MCPProxy, endpoint *models.MCPProxyEndpoint, ee *models.MCPProxyEndpointEnvironment,
-) (*mcpDiscoveryTarget, error) {
-	upstream := endpoint.Configuration.Upstream
-	if proxy.Configuration.Source != nil || upstream == nil || strings.TrimSpace(upstream.URL) == "" {
-		return nil, &mcpDiscoveryPermanentError{
-			reason: "the binding is secured with a scheme AMS cannot authenticate to, and its MCP server is " +
-				"reachable only through the gateway; send capabilities with the binding",
+// discoveryIdentityToken is an access token the binding's Agent Identity gateway accepts: one from its environment's
+// identity provider for the binding's resource server, requested with AMS's own client for that environment. The
+// binding enforces no scope on listing its capabilities (mcp-auth's requiredScopes is advertised only, and mcp-authz
+// rules cover tool calls), so the token needs none. The gateway then calls the MCP server itself, with the binding's
+// upstream credential: AMS never reaches the upstream, which may be visible only from the data plane.
+func (s *ProjectMCPProxyService) discoveryIdentityToken(
+	ctx context.Context, ouID string, proxy *models.MCPProxy, ee *models.MCPProxyEndpointEnvironment, envName string,
+) (string, error) {
+	if s.base.resolver == nil {
+		return "", &mcpDiscoveryPermanentError{reason: "no identity provider is configured for Agent Identity bindings"}
+	}
+	resource, err := s.base.MCPResourceServerIdentifier(ctx, ouID, ee.EnvironmentUUID, proxy)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve the binding's resource server: %w", err)
+	}
+	client, err := ResolveEnvThunderIdentity(ctx, s.base.resolver, ouID, envName)
+	if err != nil {
+		return "", fmt.Errorf("the environment's identity provider is unavailable: %w", err)
+	}
+	issuer, ok := client.(thundersvc.ResourceTokenIssuer)
+	if !ok {
+		return "", &mcpDiscoveryPermanentError{
+			reason: "the environment's identity provider does not issue tokens to Agent Manager; send capabilities with the binding",
 		}
 	}
-	target := &mcpDiscoveryTarget{artifact: ee.ArtifactUUID.String(), publicURL: strings.TrimSpace(upstream.URL), upstream: true}
-	if auth := upstream.Auth; auth != nil && strings.EqualFold(valueOrEmpty(auth.Type), "api-key") {
-		value, err := s.storedUpstreamValue(auth)
-		if err != nil {
-			return nil, &mcpDiscoveryPermanentError{reason: "the binding's upstream credential cannot be read"}
-		}
-		target.headerName, target.headerValue = strings.TrimSpace(valueOrEmpty(auth.Header)), value
+	token, err := issuer.ResourceToken(ctx, resource)
+	if err != nil {
+		return "", fmt.Errorf("failed to get a token for the binding's resource server: %w", err)
 	}
-	return target, nil
+	return token, nil
 }
 
 // issueDiscoveryKey issues the console-managed key a discovery attempt probes with, sent to the organization's
@@ -641,6 +646,8 @@ func (s *ProjectMCPProxyService) storeDiscoveredCapabilities(
 		// Of the binding as it is now, under the proxy lock: a PUT that changed it since the claim queued discovery
 		// again (a new token), which makes this store a no-op.
 		row.Fingerprint, _ = mcpDiscoveryFingerprint(locked, endpoint.Configuration, s.base.encryptionKey)
-		return s.discoveries.WithTx(tx).StoreDiscovered(ctx, row, capabilities, time.Now())
+		// The list came through the gateway's policies: keep what they hide and restore backend names.
+		merged := mergeGatewayDiscovery(endpoint.Configuration, capabilities)
+		return s.discoveries.WithTx(tx).StoreDiscovered(ctx, row, merged, time.Now())
 	})
 }

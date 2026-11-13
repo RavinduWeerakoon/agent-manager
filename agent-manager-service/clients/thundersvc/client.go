@@ -356,6 +356,44 @@ func (c *thunderClient) fetchSystemToken(ctx context.Context) (string, int, erro
 	return result.AccessToken, result.ExpiresIn, nil
 }
 
+// ResourceTokenIssuer issues an access token for an OAuth resource server (RFC 8707 resource) with the client's own
+// credentials. The legacy per-environment client implements it.
+type ResourceTokenIssuer interface {
+	ResourceToken(ctx context.Context, resource string) (string, error)
+}
+
+// ResourceToken is a client_credentials token from this Thunder for resource, requested with the client's own
+// credentials and no scope: what a caller of that resource server needs when it enforces no scope.
+func (c *thunderClient) ResourceToken(ctx context.Context, resource string) (string, error) {
+	data := url.Values{"grant_type": {"client_credentials"}, "resource": {resource}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.tokenURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("thunder token request build: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(c.clientID, c.clientSecret)
+
+	resp, err := c.tokenHTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("thunder token request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("thunder token endpoint returned %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("thunder token decode: %w", err)
+	}
+	if result.AccessToken == "" {
+		return "", fmt.Errorf("thunder returned empty access_token")
+	}
+	return result.AccessToken, nil
+}
+
 // getDefaultOUID fetches the default organization unit ID from Thunder.
 func (c *thunderClient) getDefaultOUID(ctx context.Context, token string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/organization-units/tree/default", nil)

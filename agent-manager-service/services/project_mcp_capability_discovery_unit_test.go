@@ -32,6 +32,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"github.com/wso2/agent-manager/agent-manager-service/clients/clientmocks"
+	"github.com/wso2/agent-manager/agent-manager-service/clients/thundersvc"
 	"github.com/wso2/agent-manager/agent-manager-service/models"
 	"github.com/wso2/agent-manager/agent-manager-service/repositories"
 	"github.com/wso2/agent-manager/agent-manager-service/repositories/repomocks"
@@ -447,6 +449,7 @@ func (f *discoveryFixture) identityByURL(t *testing.T, auth *models.UpstreamAuth
 	cfg := &f.proxy.Endpoints[0].Configuration
 	cfg.Security = &models.SecurityConfig{Enabled: &on, Identity: &models.IdentitySecurity{Enabled: &on}}
 	cfg.Upstream = &models.UpstreamEndpoint{URL: discoveryUpstreamURL, Auth: auth}
+	f.withTokenIssuer()
 }
 
 func upstreamAPIKey(header, value string) *models.UpstreamAuth {
@@ -454,74 +457,170 @@ func upstreamAPIKey(header, value string) *models.UpstreamAuth {
 	return &models.UpstreamAuth{Type: &typ, Header: &header, Value: &value}
 }
 
-// A binding secured with Agent Identity, whose gateway takes a JWT AMS cannot get, is probed at its MCP server's
-// upstream URL with the binding's upstream credential, and no gateway key is issued.
-func TestCapabilityDiscovery_IdentityBindingIsProbedAtItsUpstream(t *testing.T) {
+// tokenIdentityClient is an environment identity client that also issues resource tokens, as the legacy Thunder
+// client does.
+type tokenIdentityClient struct {
+	*clientmocks.EnvIdentityClientMock
+	issue func(resource string) (string, error)
+}
+
+func (c tokenIdentityClient) ResourceToken(_ context.Context, resource string) (string, error) {
+	return c.issue(resource)
+}
+
+// tokenCalls records the resources discovery asked the identity provider for tokens for.
+type tokenCalls struct {
+	resources []string
+	envs      []string
+	err       error
+}
+
+// withTokenIssuer gives the fixture an environment identity provider that issues "tok-<n>" tokens.
+func (f *discoveryFixture) withTokenIssuer() *tokenCalls {
+	calls := &tokenCalls{}
+	f.svc.base.resolver = &clientmocks.EnvThunderResolverMock{
+		ResolveIdentityFunc: func(_ context.Context, _, _, envName string) (thundersvc.EnvIdentityClient, error) {
+			return tokenIdentityClient{EnvIdentityClientMock: &clientmocks.EnvIdentityClientMock{}, issue: func(resource string) (string, error) {
+				calls.resources, calls.envs = append(calls.resources, resource), append(calls.envs, envName)
+				if calls.err != nil {
+					return "", calls.err
+				}
+				return fmt.Sprintf("tok-%d", len(calls.resources)), nil
+			}}, nil
+		},
+	}
+	return calls
+}
+
+// An Agent Identity binding is probed through its gateway with a token from its environment's identity provider for
+// the binding's resource server; no gateway key is issued, and AMS never calls the upstream itself.
+func TestCapabilityDiscovery_IdentityBindingIsProbedThroughTheGatewayWithAToken(t *testing.T) {
 	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
 	f.identityByURL(t, upstreamAPIKey("Authorization", "Bearer github-pat"))
+	tokens := f.withTokenIssuer()
 	f.enqueue(t)
 
 	f.recon.RunOnce(context.Background())
 
+	gatewayURL := "https://dev-gw.example.com/p1/weather/mcp"
 	require.Len(t, f.calls, 1)
-	assert.Equal(t, probeCall{url: discoveryUpstreamURL, header: "Authorization", value: "Bearer github-pat"}, f.calls[0])
+	assert.Equal(t, probeCall{url: gatewayURL, header: "Authorization", value: "Bearer tok-1"}, f.calls[0])
+	assert.Equal(t, []string{gatewayURL}, tokens.resources, "a token for the binding's resource server")
+	assert.Equal(t, []string{bindingEnv}, tokens.envs)
 	assert.Empty(t, f.keys, "no gateway key is issued")
 	assert.Equal(t, models.MCPCapabilityDiscoveryDiscovered, f.row(t).Status)
-	resp := f.get(t)
-	require.NotNil(t, resp.Capabilities)
-	require.NotNil(t, resp.Capabilities.Tools)
-	assert.Len(t, *resp.Capabilities.Tools, 2)
 }
 
-// An Agent Identity binding whose MCP server needs no upstream credential is probed at its upstream without one.
-func TestCapabilityDiscovery_IdentityBindingWithoutUpstreamAuthIsProbedWithoutAHeader(t *testing.T) {
-	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
-	f.identityByURL(t, nil)
-	f.enqueue(t)
-
-	f.recon.RunOnce(context.Background())
-
-	require.Len(t, f.calls, 1)
-	assert.Equal(t, probeCall{url: discoveryUpstreamURL}, f.calls[0])
-	assert.Equal(t, models.MCPCapabilityDiscoveryDiscovered, f.row(t).Status)
-}
-
-// An upstream probe that fails is retried, with the upstream credential redacted from the stored reason.
-func TestCapabilityDiscovery_IdentityUpstreamErrorsAreRetriedWithTheCredentialRedacted(t *testing.T) {
-	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
-	f.identityByURL(t, upstreamAPIKey("Authorization", "Bearer github-pat"))
-	f.enqueue(t)
-	f.respond = func(call probeCall) (*models.MCPServerInfoFetchResponse, error) {
-		return nil, fmt.Errorf("%w: upstream said bad token %s", utils.ErrMCPServerUnauthorized, call.value)
-	}
-
-	f.recon.RunOnce(context.Background())
-
-	require.Len(t, f.calls, 1, "an upstream 401 is not waited out: no key is on its way")
-	row := f.row(t)
-	assert.Equal(t, models.MCPCapabilityDiscoveryPending, row.Status)
-	assert.NotContains(t, row.LastError, "github-pat")
-	assert.Contains(t, row.LastError, "[REDACTED]")
-	assert.Contains(t, row.LastError, discoveryUpstreamURL)
-}
-
-// An Agent Identity binding of a component's MCP server cannot be probed at all: its upstream is in-cluster.
-func TestCapabilityDiscovery_IdentityBindingOfAComponentFails(t *testing.T) {
+// A component's Agent Identity binding is probed the same way: the gateway reaches its in-cluster upstream.
+func TestCapabilityDiscovery_IdentityBindingOfAComponentIsProbedThroughTheGateway(t *testing.T) {
 	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
 	require.NotNil(t, f.proxy.Configuration.Source, "the fixture's proxy is a component's")
 	on := true
 	f.proxy.Endpoints[0].Configuration.Security = &models.SecurityConfig{
 		Enabled: &on, Identity: &models.IdentitySecurity{Enabled: &on},
 	}
+	f.withTokenIssuer()
+	f.enqueue(t)
+
+	f.recon.RunOnce(context.Background())
+
+	require.Len(t, f.calls, 1)
+	assert.Equal(t, "Bearer tok-1", f.calls[0].value)
+	assert.Equal(t, models.MCPCapabilityDiscoveryDiscovered, f.row(t).Status)
+}
+
+// A token the identity provider refuses is an attempt failure, retried, with no probe.
+func TestCapabilityDiscovery_IdentityTokenFailureIsRetried(t *testing.T) {
+	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
+	f.identityByURL(t, nil)
+	tokens := f.withTokenIssuer()
+	tokens.err = errors.New("thunder token endpoint returned 400: invalid_target")
 	f.enqueue(t)
 
 	f.recon.RunOnce(context.Background())
 
 	assert.Empty(t, f.calls, "not probed")
-	assert.Empty(t, f.keys, "no key issued")
+	row := f.row(t)
+	assert.Equal(t, models.MCPCapabilityDiscoveryPending, row.Status)
+	assert.Contains(t, row.LastError, "invalid_target")
+}
+
+// An identity provider that does not issue tokens to AMS (a CP-managed one) fails the binding: retrying cannot help.
+func TestCapabilityDiscovery_IdentityProviderWithoutTokensFails(t *testing.T) {
+	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
+	f.identityByURL(t, nil)
+	f.svc.base.resolver = &clientmocks.EnvThunderResolverMock{
+		ResolveIdentityFunc: func(context.Context, string, string, string) (thundersvc.EnvIdentityClient, error) {
+			return &clientmocks.EnvIdentityClientMock{}, nil
+		},
+	}
+	f.enqueue(t)
+
+	f.recon.RunOnce(context.Background())
+
+	assert.Empty(t, f.calls)
 	row := f.row(t)
 	assert.Equal(t, models.MCPCapabilityDiscoveryFailed, row.Status)
-	assert.Contains(t, row.LastError, "reachable only through the gateway")
+	assert.Contains(t, row.LastError, "does not issue tokens")
+}
+
+// With no identity provider configured at all, an Agent Identity binding fails.
+func TestCapabilityDiscovery_IdentityBindingWithoutAnIdentityProviderFails(t *testing.T) {
+	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
+	f.identityByURL(t, nil)
+	f.svc.base.resolver = nil
+	f.enqueue(t)
+
+	f.recon.RunOnce(context.Background())
+
+	assert.Empty(t, f.calls)
+	assert.Equal(t, models.MCPCapabilityDiscoveryFailed, f.row(t).Status)
+}
+
+// A probe error that echoes the token is stored with the token redacted, and a 401 is not waited out.
+func TestCapabilityDiscovery_IdentityTokenIsRedactedFromErrors(t *testing.T) {
+	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
+	f.identityByURL(t, nil)
+	f.withTokenIssuer()
+	f.enqueue(t)
+	f.respond = func(call probeCall) (*models.MCPServerInfoFetchResponse, error) {
+		return nil, fmt.Errorf("%w: gateway said bad token %s", utils.ErrMCPServerUnauthorized, call.value)
+	}
+
+	f.recon.RunOnce(context.Background())
+
+	require.Len(t, f.calls, 1, "a token is valid when issued: a 401 is not retried within the attempt")
+	row := f.row(t)
+	assert.NotContains(t, row.LastError, "tok-1")
+	assert.Contains(t, row.LastError, "[REDACTED]")
+}
+
+// Discovery through the gateway keeps the stored tools the binding's ACL hides from the gateway's answer, so Manage
+// Tools never loses a denied tool.
+func TestCapabilityDiscovery_KeepsToolsTheACLHides(t *testing.T) {
+	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
+	cfg := &f.proxy.Endpoints[0].Configuration
+	all := []map[string]interface{}{{"name": "get_weather"}, {"name": "get_forecast"}, {"name": "delete_city"}}
+	cfg.Capabilities, cfg.CapabilitiesDiscovered = &models.MCPProxyCapabilities{Tools: &all}, true
+	cfg.Policies = append(cfg.Policies, models.MCPPolicy{Name: "mcp-acl-list", Version: "v1", Params: map[string]interface{}{
+		"tools": map[string]interface{}{"mode": "deny", "exceptions": []interface{}{"get_weather"}},
+	}})
+	f.respond = func(probeCall) (*models.MCPServerInfoFetchResponse, error) {
+		allowed := []map[string]interface{}{{"name": "get_weather", "description": "now"}}
+		return &models.MCPServerInfoFetchResponse{Tools: &allowed}, nil
+	}
+	f.enqueue(t)
+
+	f.recon.RunOnce(context.Background())
+
+	require.Equal(t, models.MCPCapabilityDiscoveryDiscovered, f.row(t).Status)
+	require.NotNil(t, cfg.Capabilities.Tools)
+	names := []string{}
+	for _, tool := range *cfg.Capabilities.Tools {
+		names = append(names, tool["name"].(string))
+	}
+	assert.ElementsMatch(t, []string{"get_weather", "get_forecast", "delete_city"}, names)
+	assert.Equal(t, "now", (*cfg.Capabilities.Tools)[0]["description"], "a listed tool takes the gateway's answer")
 }
 
 // An error that echoes the attempt key is stored, and so shown, with the key redacted.
