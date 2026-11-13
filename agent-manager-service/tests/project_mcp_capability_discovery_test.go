@@ -75,7 +75,7 @@ func TestProjectMCPCapabilityDiscoveryQueue(t *testing.T) {
 	queue := repositories.NewMCPCapabilityDiscoveryRepository(gdb)
 
 	deploymentRepo := repositories.NewDeploymentRepo(gdb)
-	kind := services.NewMCPProxyKind(repositories.NewGatewayRepo(gdb), deploymentRepo, queue)
+	kind := services.NewMCPProxyKind(repositories.NewGatewayRepo(gdb), deploymentRepo, queue, nil)
 	core := reconcile.NewCore(gdb, deploymentRepo, &lifecycleEventHub{}, reconcile.Kinds{kind},
 		reconcile.Config{Lease: time.Minute, AttemptBudget: 3}, testLifecycleLogger()).WithGateways(repositories.NewGatewayRepo(gdb))
 	worker := reconcile.NewWorker(core, testLifecycleLogger())

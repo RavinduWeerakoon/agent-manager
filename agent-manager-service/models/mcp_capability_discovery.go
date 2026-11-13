@@ -42,6 +42,10 @@ type MCPCapabilityDiscoveryState struct {
 	DiscoveredAt  *time.Time `json:"discoveredAt,omitempty"`
 	// Token changes each time the binding is queued, so an attempt from before a later queueing records nothing.
 	Token string `json:"token"`
+	// Fingerprint is a keyed hash of what the discovered capabilities depend on (the MCP server's upstream, its
+	// credential, and the source component's release binding), set when discovery succeeds. A deploy that leaves it
+	// unchanged, such as one for a policy or security change, does not queue discovery again.
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 // MCPCapabilityDiscovery is a binding's discovery as a claim returns it: the state plus the binding it belongs to.

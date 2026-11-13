@@ -17,6 +17,9 @@ package services
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -461,6 +464,60 @@ func (s *ProjectMCPProxyService) bindingByArtifact(
 	return nil, nil, nil, errMCPDiscoveryNotNeeded
 }
 
+// mcpDiscoveryFingerprint is a keyed hash of what a binding's discovered capabilities depend on: the MCP server it
+// reaches (its source component and release binding, or its upstream URL), and the credential the upstream is
+// called with. Gateway-side configuration (policies, security, scopes, timeouts) is left out: it cannot change what
+// the MCP server lists. It is keyed with the encryption key, so the stored hash says nothing about the credential.
+// ok is false without a key, or when the credential cannot be read; the binding is then always discovered again.
+func mcpDiscoveryFingerprint(proxy *models.MCPProxy, cfg models.MCPEndpointConfig, key []byte) (string, bool) {
+	if len(key) == 0 {
+		return "", false
+	}
+	var source models.MCPProxySource
+	if proxy.Configuration.Source != nil {
+		source = *proxy.Configuration.Source
+	}
+	var upstream models.UpstreamEndpoint
+	authType, authHeader, credential := "", "", ""
+	if cfg.Upstream != nil {
+		upstream = *cfg.Upstream
+		if auth := cfg.Upstream.Auth; auth != nil {
+			authType, authHeader = strings.ToLower(valueOrEmpty(auth.Type)), valueOrEmpty(auth.Header)
+			credential = valueOrEmpty(auth.Value)
+			if auth.SecretRef != nil {
+				plain, err := utils.DecryptSecretRef(*auth.SecretRef, key)
+				if err != nil {
+					return "", false
+				}
+				credential = plain
+			}
+		}
+	}
+	mac := hmac.New(sha256.New, key)
+	for _, field := range []string{
+		source.ComponentName, source.EndpointName, cfg.ReleaseBindingName,
+		strings.TrimSpace(upstream.URL), upstream.Ref, authType, authHeader, credential,
+	} {
+		// Length-prefixed, so no two field lists hash the same input. A hash's Write never fails.
+		_, _ = fmt.Fprintf(mac, "%d:%s", len(field), field)
+	}
+	return mcpDiscoveryFingerprintVersion + hex.EncodeToString(mac.Sum(nil)), true
+}
+
+// mcpDiscoveryFingerprintVersion prefixes fingerprints, so a change to what they cover discovers every binding again.
+const mcpDiscoveryFingerprintVersion = "v1:"
+
+// discoveryIsCurrent reports a binding whose last discovery succeeded and whose fingerprint is unchanged since, which
+// a deploy need not discover again. A binding discovered before fingerprints were stored has none, and is.
+func discoveryIsCurrent(proxy *models.MCPProxy, cfg models.MCPEndpointConfig, key []byte) bool {
+	state := cfg.CapabilityDiscovery
+	if state == nil || state.Status != models.MCPCapabilityDiscoveryDiscovered || state.Fingerprint == "" {
+		return false
+	}
+	fingerprint, ok := mcpDiscoveryFingerprint(proxy, cfg, key)
+	return ok && hmac.Equal([]byte(fingerprint), []byte(state.Fingerprint))
+}
+
 // callerGaveCapabilities reports a binding whose capabilities came from its caller, which discovery leaves alone.
 func callerGaveCapabilities(cfg models.MCPEndpointConfig) bool {
 	return cfg.Capabilities != nil && !cfg.CapabilitiesDiscovered
@@ -581,6 +638,9 @@ func (s *ProjectMCPProxyService) storeDiscoveredCapabilities(
 		if endpoint == nil || callerGaveCapabilities(endpoint.Configuration) {
 			return errMCPDiscoveryNotNeeded
 		}
+		// Of the binding as it is now, under the proxy lock: a PUT that changed it since the claim queued discovery
+		// again (a new token), which makes this store a no-op.
+		row.Fingerprint, _ = mcpDiscoveryFingerprint(locked, endpoint.Configuration, s.base.encryptionKey)
 		return s.discoveries.WithTx(tx).StoreDiscovered(ctx, row, capabilities, time.Now())
 	})
 }

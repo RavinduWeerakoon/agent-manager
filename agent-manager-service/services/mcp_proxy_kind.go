@@ -70,19 +70,26 @@ type MCPProxyKind struct {
 	deploymentRepo repositories.DeploymentRepository
 	// discoveries queues a project binding's capability discovery once it is live; nil queues none.
 	discoveries repositories.MCPCapabilityDiscoveryRepository
-	load        func(ctx context.Context, artifact models.ArtifactRef) (*mcpArtifact, error)
+	// encryptionKey reads a binding's upstream credential for its discovery fingerprint; without it every deploy
+	// queues discovery.
+	encryptionKey []byte
+	load          func(ctx context.Context, artifact models.ArtifactRef) (*mcpArtifact, error)
 }
 
 // NewMCPProxyKind reads MCP proxies through the request's transaction when there is one.
 func NewMCPProxyKind(
 	gatewayRepo repositories.GatewayRepository, deploymentRepo repositories.DeploymentRepository,
-	discoveries repositories.MCPCapabilityDiscoveryRepository,
+	discoveries repositories.MCPCapabilityDiscoveryRepository, encryptionKey []byte,
 ) *MCPProxyKind {
-	return &MCPProxyKind{gatewayRepo: gatewayRepo, deploymentRepo: deploymentRepo, discoveries: discoveries, load: loadMCPArtifact}
+	return &MCPProxyKind{
+		gatewayRepo: gatewayRepo, deploymentRepo: deploymentRepo, discoveries: discoveries,
+		encryptionKey: encryptionKey, load: loadMCPArtifact,
+	}
 }
 
 // AfterLive queues the capability discovery of a project proxy binding that has just gone live, unless its caller
-// gave capabilities. Every deploy queues it again, so a new release's tools replace the old ones.
+// gave capabilities, or its last discovery succeeded and nothing it depends on has changed since
+// (discoveryIsCurrent): a deploy for a policy, security or scope change cannot change the MCP server's tools.
 func (k *MCPProxyKind) AfterLive(ctx context.Context, tx *gorm.DB, p models.Placement, _ uuid.UUID) error {
 	if k.discoveries == nil {
 		return nil
@@ -106,9 +113,14 @@ func (k *MCPProxyKind) AfterLive(ctx context.Context, tx *gorm.DB, p models.Plac
 		return nil
 	}
 	for i := range proxy.Endpoints {
-		if proxy.Endpoints[i].UUID == binding.EndpointUUID && !callerGaveCapabilities(proxy.Endpoints[i].Configuration) {
-			return k.discoveries.WithTx(tx).Enqueue(ctx, p.ArtifactUUID)
+		endpoint := &proxy.Endpoints[i]
+		if endpoint.UUID != binding.EndpointUUID || callerGaveCapabilities(endpoint.Configuration) {
+			continue
 		}
+		if discoveryIsCurrent(proxy, endpoint.Configuration, k.encryptionKey) {
+			return nil
+		}
+		return k.discoveries.WithTx(tx).Enqueue(ctx, p.ArtifactUUID)
 	}
 	return nil
 }

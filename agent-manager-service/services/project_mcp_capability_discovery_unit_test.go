@@ -705,3 +705,117 @@ func TestCapabilityDiscovery_ProbeTakesMethodNotFoundAsNone(t *testing.T) {
 	assert.Nil(t, info.Prompts)
 	assert.Nil(t, info.Resources)
 }
+
+// discoveredIdentityByURL is a binding discovered once at its upstream, with the fingerprint discovery stored.
+func discoveredIdentityByURL(t *testing.T) *discoveryFixture {
+	t.Helper()
+	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
+	f.identityByURL(t, upstreamAPIKey("Authorization", "Bearer github-pat"))
+	f.enqueue(t)
+	f.recon.RunOnce(context.Background())
+	require.Equal(t, models.MCPCapabilityDiscoveryDiscovered, f.row(t).Status)
+	return f
+}
+
+// isCurrent is whether a deploy of the fixture's binding, as it is now, would skip discovery.
+func (f *discoveryFixture) isCurrent() bool {
+	return discoveryIsCurrent(f.proxy, f.proxy.Endpoints[0].Configuration, f.svc.base.encryptionKey)
+}
+
+// A successful discovery stores a keyed fingerprint that does not contain the upstream credential.
+func TestCapabilityDiscovery_StoresAFingerprintWithoutTheCredential(t *testing.T) {
+	f := discoveredIdentityByURL(t)
+
+	fingerprint := f.row(t).Fingerprint
+	require.True(t, strings.HasPrefix(fingerprint, mcpDiscoveryFingerprintVersion), fingerprint)
+	assert.NotContains(t, fingerprint, "github-pat")
+	assert.True(t, f.isCurrent(), "a deploy right after discovery does not discover again")
+}
+
+// A deploy for a gateway-side change (policies, security, timeouts) leaves the fingerprint as it was, so it does not
+// discover again.
+func TestCapabilityDiscovery_GatewaySideChangesKeepDiscoveryCurrent(t *testing.T) {
+	f := discoveredIdentityByURL(t)
+	cfg := &f.proxy.Endpoints[0].Configuration
+	timeout := "30s"
+
+	cfg.Policies = append(cfg.Policies, models.MCPPolicy{Name: "mcp-acl-list", Version: "v1"})
+	cfg.Resilience = &models.Resilience{Timeout: &timeout}
+	on := true
+	cfg.Security = &models.SecurityConfig{Enabled: &on, APIKey: &models.APIKeySecurity{Enabled: &on, Key: "X-API-Key", In: "header"}}
+	// A PUT re-encrypts the same credential with a new nonce.
+	value := "Bearer github-pat"
+	encoded, err := utils.EncryptSecretRef(value, f.svc.base.encryptionKey)
+	require.NoError(t, err)
+	cfg.Upstream.Auth.SecretRef = &encoded
+
+	assert.True(t, f.isCurrent())
+}
+
+// What the MCP server's answer depends on changing makes a deploy discover again.
+func TestCapabilityDiscovery_UpstreamChangesMakeDiscoveryStale(t *testing.T) {
+	cases := map[string]func(t *testing.T, f *discoveryFixture){
+		"upstream URL": func(_ *testing.T, f *discoveryFixture) {
+			f.proxy.Endpoints[0].Configuration.Upstream.URL = "https://api.example.com/v2/mcp"
+		},
+		"upstream credential": func(t *testing.T, f *discoveryFixture) {
+			encoded, err := utils.EncryptSecretRef("Bearer another-pat", f.svc.base.encryptionKey)
+			require.NoError(t, err)
+			f.proxy.Endpoints[0].Configuration.Upstream.Auth.SecretRef = &encoded
+		},
+		"upstream credential header": func(_ *testing.T, f *discoveryFixture) {
+			header := "X-Upstream-Token"
+			f.proxy.Endpoints[0].Configuration.Upstream.Auth.Header = &header
+		},
+		"upstream credential removed": func(_ *testing.T, f *discoveryFixture) {
+			f.proxy.Endpoints[0].Configuration.Upstream.Auth = nil
+		},
+		"release binding": func(_ *testing.T, f *discoveryFixture) {
+			f.proxy.Endpoints[0].Configuration.ReleaseBindingName = "weather-release-2"
+		},
+		"source component": func(_ *testing.T, f *discoveryFixture) {
+			f.proxy.Configuration.Source = &models.MCPProxySource{ComponentName: "weather", EndpointName: "mcp"}
+		},
+	}
+	for name, change := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := discoveredIdentityByURL(t)
+			change(t, f)
+			assert.False(t, f.isCurrent())
+		})
+	}
+}
+
+// A binding whose last discovery did not succeed, or has no fingerprint, is discovered again on deploy, as is every
+// binding when no key is configured.
+func TestCapabilityDiscovery_UnsettledDiscoveryIsNotCurrent(t *testing.T) {
+	cases := map[string]func(f *discoveryFixture) []byte{
+		"failed": func(f *discoveryFixture) []byte {
+			f.proxy.Endpoints[0].Configuration.CapabilityDiscovery.Status = models.MCPCapabilityDiscoveryFailed
+			return f.svc.base.encryptionKey
+		},
+		"pending": func(f *discoveryFixture) []byte {
+			f.proxy.Endpoints[0].Configuration.CapabilityDiscovery.Status = models.MCPCapabilityDiscoveryPending
+			return f.svc.base.encryptionKey
+		},
+		"discovered before fingerprints": func(f *discoveryFixture) []byte {
+			f.proxy.Endpoints[0].Configuration.CapabilityDiscovery.Fingerprint = ""
+			return f.svc.base.encryptionKey
+		},
+		"never discovered": func(f *discoveryFixture) []byte {
+			f.proxy.Endpoints[0].Configuration.CapabilityDiscovery = nil
+			return f.svc.base.encryptionKey
+		},
+		"no encryption key": func(*discoveryFixture) []byte { return nil },
+		"another key": func(*discoveryFixture) []byte {
+			return []byte("fedcba9876543210fedcba9876543210")
+		},
+	}
+	for name, setup := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := discoveredIdentityByURL(t)
+			key := setup(f)
+			assert.False(t, discoveryIsCurrent(f.proxy, f.proxy.Endpoints[0].Configuration, key))
+		})
+	}
+}
