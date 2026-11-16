@@ -492,11 +492,108 @@ func (f *discoveryFixture) withTokenIssuer() *tokenCalls {
 	return calls
 }
 
-// An Agent Identity binding is probed through its gateway with a token from its environment's identity provider for
-// the binding's resource server; no gateway key is issued, and AMS never calls the upstream itself.
-func TestCapabilityDiscovery_IdentityBindingIsProbedThroughTheGatewayWithAToken(t *testing.T) {
+// identityComponent secures the fixture's component binding, which discovery reaches only through its gateway, with
+// Agent Identity.
+func (f *discoveryFixture) identityComponent(t *testing.T) {
+	t.Helper()
+	require.NotNil(t, f.proxy.Configuration.Source, "the fixture's proxy is a component's")
+	on := true
+	f.proxy.Endpoints[0].Configuration.Security = &models.SecurityConfig{
+		Enabled: &on, Identity: &models.IdentitySecurity{Enabled: &on},
+	}
+}
+
+// An MCP server registered by URL is listed at that URL with the binding's upstream credential, whatever its gateway
+// security: no gateway key or identity token is needed.
+func TestCapabilityDiscovery_ServerRegisteredByURLIsProbedAtItsUpstream(t *testing.T) {
+	for name, security := range map[string]func() *models.SecurityConfig{
+		"agent identity": func() *models.SecurityConfig {
+			on := true
+			return &models.SecurityConfig{Enabled: &on, Identity: &models.IdentitySecurity{Enabled: &on}}
+		},
+		"api key": func() *models.SecurityConfig {
+			on := true
+			return &models.SecurityConfig{Enabled: &on, APIKey: &models.APIKeySecurity{Enabled: &on, Key: "X-API-Key", In: "header"}}
+		},
+		"security off": func() *models.SecurityConfig { off := false; return &models.SecurityConfig{Enabled: &off} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
+			f.identityByURL(t, upstreamAPIKey("Authorization", "Bearer github-pat"))
+			f.proxy.Endpoints[0].Configuration.Security = security()
+			tokens := f.withTokenIssuer()
+			f.enqueue(t)
+
+			f.recon.RunOnce(context.Background())
+
+			require.Len(t, f.calls, 1)
+			assert.Equal(t, probeCall{url: discoveryUpstreamURL, header: "Authorization", value: "Bearer github-pat"}, f.calls[0])
+			assert.Empty(t, f.keys, "no gateway key is issued")
+			assert.Empty(t, tokens.resources, "no identity token is requested")
+			assert.Equal(t, models.MCPCapabilityDiscoveryDiscovered, f.row(t).Status)
+		})
+	}
+}
+
+// An MCP server registered by URL with no upstream credential is probed without a header.
+func TestCapabilityDiscovery_ServerRegisteredByURLWithoutUpstreamAuth(t *testing.T) {
+	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
+	f.identityByURL(t, nil)
+	f.enqueue(t)
+
+	f.recon.RunOnce(context.Background())
+
+	require.Len(t, f.calls, 1)
+	assert.Equal(t, probeCall{url: discoveryUpstreamURL}, f.calls[0])
+}
+
+// The upstream's answer is the MCP server's own complete list, so it is stored as it is: a tool the ACL hides is not
+// kept once the MCP server drops it.
+func TestCapabilityDiscovery_UpstreamAnswerIsStoredWithoutTheMerge(t *testing.T) {
+	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
+	f.identityByURL(t, nil)
+	cfg := &f.proxy.Endpoints[0].Configuration
+	stored := []map[string]interface{}{{"name": "get_weather"}, {"name": "retired_tool"}}
+	cfg.Capabilities, cfg.CapabilitiesDiscovered = &models.MCPProxyCapabilities{Tools: &stored}, true
+	cfg.Policies = append(cfg.Policies, models.MCPPolicy{Name: "mcp-acl-list", Version: "v1", Params: map[string]interface{}{
+		"tools": map[string]interface{}{"mode": "deny", "exceptions": []interface{}{"get_weather"}},
+	}})
+	f.enqueue(t)
+
+	f.recon.RunOnce(context.Background())
+
+	require.NotNil(t, cfg.Capabilities.Tools)
+	names := []string{}
+	for _, tool := range *cfg.Capabilities.Tools {
+		names = append(names, tool["name"].(string))
+	}
+	assert.ElementsMatch(t, []string{"get_weather", "get_forecast"}, names, "the MCP server's list, all of it")
+}
+
+// An upstream error that echoes the upstream credential is stored with it redacted.
+func TestCapabilityDiscovery_UpstreamCredentialIsRedactedFromErrors(t *testing.T) {
 	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
 	f.identityByURL(t, upstreamAPIKey("Authorization", "Bearer github-pat"))
+	f.enqueue(t)
+	f.respond = func(call probeCall) (*models.MCPServerInfoFetchResponse, error) {
+		return nil, fmt.Errorf("%w: upstream said bad token %s", utils.ErrMCPServerUnauthorized, call.value)
+	}
+
+	f.recon.RunOnce(context.Background())
+
+	require.Len(t, f.calls, 1)
+	require.Equal(t, "Bearer github-pat", f.calls[0].value, "the upstream credential was sent")
+	row := f.row(t)
+	assert.Equal(t, models.MCPCapabilityDiscoveryPending, row.Status, "retried")
+	assert.NotContains(t, row.LastError, "github-pat")
+	assert.Contains(t, row.LastError, "[REDACTED]")
+}
+
+// A component's Agent Identity binding is probed through its gateway with a token from its environment's identity
+// provider for the binding's resource server; no gateway key is issued.
+func TestCapabilityDiscovery_IdentityBindingIsProbedThroughTheGatewayWithAToken(t *testing.T) {
+	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
+	f.identityComponent(t)
 	tokens := f.withTokenIssuer()
 	f.enqueue(t)
 
@@ -511,28 +608,10 @@ func TestCapabilityDiscovery_IdentityBindingIsProbedThroughTheGatewayWithAToken(
 	assert.Equal(t, models.MCPCapabilityDiscoveryDiscovered, f.row(t).Status)
 }
 
-// A component's Agent Identity binding is probed the same way: the gateway reaches its in-cluster upstream.
-func TestCapabilityDiscovery_IdentityBindingOfAComponentIsProbedThroughTheGateway(t *testing.T) {
-	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
-	require.NotNil(t, f.proxy.Configuration.Source, "the fixture's proxy is a component's")
-	on := true
-	f.proxy.Endpoints[0].Configuration.Security = &models.SecurityConfig{
-		Enabled: &on, Identity: &models.IdentitySecurity{Enabled: &on},
-	}
-	f.withTokenIssuer()
-	f.enqueue(t)
-
-	f.recon.RunOnce(context.Background())
-
-	require.Len(t, f.calls, 1)
-	assert.Equal(t, "Bearer tok-1", f.calls[0].value)
-	assert.Equal(t, models.MCPCapabilityDiscoveryDiscovered, f.row(t).Status)
-}
-
 // A token the identity provider refuses is an attempt failure, retried, with no probe.
 func TestCapabilityDiscovery_IdentityTokenFailureIsRetried(t *testing.T) {
 	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
-	f.identityByURL(t, nil)
+	f.identityComponent(t)
 	tokens := f.withTokenIssuer()
 	tokens.err = errors.New("thunder token endpoint returned 400: invalid_target")
 	f.enqueue(t)
@@ -548,7 +627,7 @@ func TestCapabilityDiscovery_IdentityTokenFailureIsRetried(t *testing.T) {
 // An identity provider that does not issue tokens to AMS (a CP-managed one) fails the binding: retrying cannot help.
 func TestCapabilityDiscovery_IdentityProviderWithoutTokensFails(t *testing.T) {
 	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
-	f.identityByURL(t, nil)
+	f.identityComponent(t)
 	f.svc.base.resolver = &clientmocks.EnvThunderResolverMock{
 		ResolveIdentityFunc: func(context.Context, string, string, string) (thundersvc.EnvIdentityClient, error) {
 			return &clientmocks.EnvIdentityClientMock{}, nil
@@ -567,7 +646,7 @@ func TestCapabilityDiscovery_IdentityProviderWithoutTokensFails(t *testing.T) {
 // With no identity provider configured at all, an Agent Identity binding fails.
 func TestCapabilityDiscovery_IdentityBindingWithoutAnIdentityProviderFails(t *testing.T) {
 	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
-	f.identityByURL(t, nil)
+	f.identityComponent(t)
 	f.svc.base.resolver = nil
 	f.enqueue(t)
 
@@ -580,7 +659,7 @@ func TestCapabilityDiscovery_IdentityBindingWithoutAnIdentityProviderFails(t *te
 // A probe error that echoes the token is stored with the token redacted, and a 401 is not waited out.
 func TestCapabilityDiscovery_IdentityTokenIsRedactedFromErrors(t *testing.T) {
 	f := newDiscoveryFixture(t, models.MCPProxyEnvironmentRequest{})
-	f.identityByURL(t, nil)
+	f.identityComponent(t)
 	f.withTokenIssuer()
 	f.enqueue(t)
 	f.respond = func(call probeCall) (*models.MCPServerInfoFetchResponse, error) {

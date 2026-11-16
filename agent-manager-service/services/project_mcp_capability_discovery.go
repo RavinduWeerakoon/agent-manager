@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/agent-manager/agent-manager-service/models"
 	"github.com/wso2/agent-manager/agent-manager-service/repositories"
 	"github.com/wso2/agent-manager/agent-manager-service/utils"
+	"github.com/wso2/agent-manager/agent-manager-service/utils/ssrf"
 )
 
 // A project MCP proxy binding whose caller sent no capabilities has them discovered by AMS
@@ -79,9 +80,11 @@ type projectMCPCapabilityDiscoveryService struct {
 	discoveries repositories.MCPCapabilityDiscoveryRepository
 	bindings    *ProjectMCPProxyService
 	probe       MCPCapabilityProber
-	logger      *slog.Logger
-	stopCh      chan struct{}
-	stopOnce    sync.Once
+	// probeUpstream probes an MCP server registered by URL at that URL, which its owner gave, so it is SSRF-guarded.
+	probeUpstream MCPCapabilityProber
+	logger        *slog.Logger
+	stopCh        chan struct{}
+	stopOnce      sync.Once
 
 	attemptTimeout time.Duration
 	batchBudget    time.Duration
@@ -94,7 +97,20 @@ func NewProjectMCPCapabilityDiscoveryService(
 	discoveries repositories.MCPCapabilityDiscoveryRepository, bindings *ProjectMCPProxyService, logger *slog.Logger,
 ) ProjectMCPCapabilityDiscoveryService {
 	client := newMCPDiscoveryClient(config.GetConfig().A2ACardFetchDialAddr)
-	return newProjectMCPCapabilityDiscoveryService(discoveries, bindings, newMCPDiscoveryProber(client, logger), logger)
+	s := newProjectMCPCapabilityDiscoveryService(discoveries, bindings, newMCPDiscoveryProber(client, logger), logger)
+	s.probeUpstream = newMCPDiscoveryProber(newMCPUpstreamDiscoveryClient(), logger)
+	return s
+}
+
+// newMCPUpstreamDiscoveryClient probes an MCP server at the URL it was registered with. The URL is its owner's, so the
+// client is SSRF-guarded, and it follows no redirect: one would carry the upstream credential (a custom header, which
+// Go forwards across hosts) to wherever it points.
+func newMCPUpstreamDiscoveryClient() *http.Client {
+	client := ssrf.NewClient(mcpRequestTimeout)
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return client
 }
 
 // newMCPDiscoveryClient is the probe's HTTP client. It is not the SSRF-guarded one: the URL is built by AMS from a
@@ -127,11 +143,12 @@ func newProjectMCPCapabilityDiscoveryService(
 	probe MCPCapabilityProber, logger *slog.Logger,
 ) *projectMCPCapabilityDiscoveryService {
 	return &projectMCPCapabilityDiscoveryService{
-		discoveries: discoveries,
-		bindings:    bindings,
-		probe:       probe,
-		logger:      logger,
-		stopCh:      make(chan struct{}),
+		discoveries:   discoveries,
+		bindings:      bindings,
+		probe:         probe,
+		probeUpstream: probe,
+		logger:        logger,
+		stopCh:        make(chan struct{}),
 
 		attemptTimeout: mcpDiscoveryAttemptTimeout,
 		batchBudget:    mcpDiscoveryBatchBudget,
@@ -185,7 +202,7 @@ func (s *projectMCPCapabilityDiscoveryService) discoverOne(ctx context.Context, 
 	defer cancel()
 	log := s.logger.With("ouID", row.OUID, "artifactUUID", row.ArtifactUUID)
 
-	capabilities, err := s.attempt(attemptCtx, row)
+	capabilities, throughGateway, err := s.attempt(attemptCtx, row)
 	var permanent *mcpDiscoveryPermanentError
 	switch {
 	case errors.Is(err, errMCPDiscoveryNotNeeded):
@@ -199,7 +216,7 @@ func (s *projectMCPCapabilityDiscoveryService) discoverOne(ctx context.Context, 
 		s.recordAttemptFailure(recordCtx, log, row, err)
 		return
 	}
-	err = s.bindings.storeDiscoveredCapabilities(recordCtx, row, capabilities)
+	err = s.bindings.storeDiscoveredCapabilities(recordCtx, row, capabilities, throughGateway)
 	switch {
 	case errors.Is(err, errMCPDiscoveryNotNeeded):
 		s.record(log, s.discoveries.Drop(recordCtx, row))
@@ -222,11 +239,29 @@ func (e *mcpDiscoveryPermanentError) Error() string { return e.reason }
 // attempt lists the binding's capabilities through its gateway.
 func (s *projectMCPCapabilityDiscoveryService) attempt(
 	ctx context.Context, row models.MCPCapabilityDiscovery,
-) (*models.MCPProxyCapabilities, error) {
+) (capabilities *models.MCPProxyCapabilities, throughGateway bool, err error) {
 	target, err := s.bindings.discoveryTarget(ctx, row.OUID, row.ArtifactUUID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
+	if target.direct {
+		info, err := s.probeUpstream(ctx, target.publicURL, target.headerName, target.headerValue)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to list the MCP server's capabilities at %s: %w",
+				target.publicURL, redactSecret(err, target.headerValue))
+		}
+		capabilities, err := normalizeDiscoveredCapabilities(info)
+		return capabilities, false, err
+	}
+	capabilities, err = s.attemptThroughGateway(ctx, row, target)
+	return capabilities, true, err
+}
+
+// attemptThroughGateway lists a component's binding through its gateway: with an attempt key for an API key binding,
+// or an identity token for an Agent Identity one.
+func (s *projectMCPCapabilityDiscoveryService) attemptThroughGateway(
+	ctx context.Context, row models.MCPCapabilityDiscovery, target *mcpDiscoveryTarget,
+) (*models.MCPProxyCapabilities, error) {
 	if target.headerValue != "" {
 		// An identity token, valid as soon as it is issued: a 401 is not waited out.
 		info, err := s.probe(ctx, target.publicURL, target.headerName, target.headerValue)
@@ -414,7 +449,11 @@ type mcpDiscoveryTarget struct {
 	artifact  string
 	publicURL string
 	security  *models.SecurityConfig
-	// headerName/headerValue carry an Agent Identity binding's access token; empty for any other binding.
+	// direct marks an MCP server registered by URL, probed at that URL (publicURL is then the upstream URL) with the
+	// binding's upstream credential, instead of through the gateway.
+	direct bool
+	// headerName/headerValue carry the upstream credential of a direct target, or an Agent Identity binding's access
+	// token for the gateway; empty otherwise.
 	headerName  string
 	headerValue string
 }
@@ -518,6 +557,9 @@ func (s *ProjectMCPProxyService) discoveryTarget(ctx context.Context, ouID strin
 	if callerGaveCapabilities(endpoint.Configuration) {
 		return nil, errMCPDiscoveryNotNeeded
 	}
+	if direct, err := s.directDiscoveryTarget(proxy, endpoint, ee); direct != nil || err != nil {
+		return direct, err
+	}
 	resp, err := s.environmentResponse(ctx, ouID, proxy, endpoint, ee)
 	if err != nil {
 		return nil, err
@@ -547,6 +589,29 @@ func (s *ProjectMCPProxyService) discoveryTarget(ctx context.Context, ouID strin
 		return nil, err
 	}
 	target.headerName, target.headerValue = "Authorization", "Bearer "+token
+	return target, nil
+}
+
+// directDiscoveryTarget is the target of a binding whose MCP server was registered by URL: AMS lists it at that URL
+// with the binding's upstream credential, as the org proxy flow does, whatever the binding's gateway security. Through
+// the gateway the answer would have been through the binding's policies (mcp-acl-list drops what it hides,
+// mcp-rewrite renames and filters), which no merge can fully undo. nil for a component's MCP server, whose upstream
+// is an in-cluster address of the data plane that only the gateway reaches.
+func (s *ProjectMCPProxyService) directDiscoveryTarget(
+	proxy *models.MCPProxy, endpoint *models.MCPProxyEndpoint, ee *models.MCPProxyEndpointEnvironment,
+) (*mcpDiscoveryTarget, error) {
+	upstream := endpoint.Configuration.Upstream
+	if proxy.Configuration.Source != nil || upstream == nil || strings.TrimSpace(upstream.URL) == "" {
+		return nil, nil //nolint:nilnil // not a direct target
+	}
+	target := &mcpDiscoveryTarget{artifact: ee.ArtifactUUID.String(), publicURL: strings.TrimSpace(upstream.URL), direct: true}
+	if auth := upstream.Auth; auth != nil && strings.EqualFold(valueOrEmpty(auth.Type), "api-key") {
+		value, err := s.storedUpstreamValue(auth)
+		if err != nil {
+			return nil, &mcpDiscoveryPermanentError{reason: "the binding's upstream credential cannot be read"}
+		}
+		target.headerName, target.headerValue = strings.TrimSpace(valueOrEmpty(auth.Header)), value
+	}
 	return target, nil
 }
 
@@ -618,7 +683,7 @@ func (s *ProjectMCPProxyService) issueDiscoveryKey(ctx context.Context, ouID, ar
 // capabilities, or that is gone, is left alone (errMCPDiscoveryNotNeeded). The binding is not redeployed: the
 // gateway does not carry capabilities.
 func (s *ProjectMCPProxyService) storeDiscoveredCapabilities(
-	ctx context.Context, row models.MCPCapabilityDiscovery, capabilities *models.MCPProxyCapabilities,
+	ctx context.Context, row models.MCPCapabilityDiscovery, capabilities *models.MCPProxyCapabilities, throughGateway bool,
 ) error {
 	proxy, _, _, err := s.bindingByArtifact(ctx, row.OUID, row.ArtifactUUID)
 	if err != nil {
@@ -646,8 +711,11 @@ func (s *ProjectMCPProxyService) storeDiscoveredCapabilities(
 		// Of the binding as it is now, under the proxy lock: a PUT that changed it since the claim queued discovery
 		// again (a new token), which makes this store a no-op.
 		row.Fingerprint, _ = mcpDiscoveryFingerprint(locked, endpoint.Configuration, s.base.encryptionKey)
-		// The list came through the gateway's policies: keep what they hide and restore backend names.
-		merged := mergeGatewayDiscovery(endpoint.Configuration, capabilities)
-		return s.discoveries.WithTx(tx).StoreDiscovered(ctx, row, merged, time.Now())
+		// A list that came through the gateway's policies keeps what they hide and has its backend names restored; one
+		// from the MCP server itself is complete as it is.
+		if throughGateway {
+			capabilities = mergeGatewayDiscovery(endpoint.Configuration, capabilities)
+		}
+		return s.discoveries.WithTx(tx).StoreDiscovered(ctx, row, capabilities, time.Now())
 	})
 }
